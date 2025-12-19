@@ -126,7 +126,8 @@ class LossFunctions:
         
         tau, _ = kendalltau(judge_scores, human_scores)
         # Convert correlation [-1, 1] to loss [0, 2]
-        return 1.0 - tau
+        # Handle NaN case (identical arrays or other edge cases)
+        return 1.0 - tau if not np.isnan(tau) else 1.0
     
     @staticmethod
     def spearman_loss(judge_scores: np.ndarray, human_scores: np.ndarray) -> float:
@@ -140,7 +141,8 @@ class LossFunctions:
         
         rho, _ = spearmanr(judge_scores, human_scores)
         # Convert correlation [-1, 1] to loss [0, 2]
-        return 1.0 - rho
+        # Handle NaN case (identical arrays or other edge cases)
+        return 1.0 - rho if not np.isnan(rho) else 1.0
     
     def compute_loss(self, judge_scores: np.ndarray, human_scores: np.ndarray,
                     loss_type: str = 'pairwise') -> Tuple[float, float, float]:

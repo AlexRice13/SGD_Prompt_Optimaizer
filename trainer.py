@@ -317,16 +317,16 @@ class SGDPromptTrainer:
                     step_info.get('modification_rationale', '')
                 )
             
+            # Update best prompt if this is the best so far (before early stopping check)
+            if val_loss <= self.early_stopping.get_best_loss():
+                best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
+                if self.version_control:
+                    self.version_control.create_checkpoint_tag(self.current_step, is_best=True)
+            
             # Check early stopping
             if self.early_stopping.step(val_loss, val_metrics, self.current_step):
                 print(f"\nEarly stopping triggered at step {self.current_step}")
                 break
-            
-            # Update best prompt if this is the best so far
-            if val_loss < self.early_stopping.get_best_loss():
-                best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
-                if self.version_control:
-                    self.version_control.create_checkpoint_tag(self.current_step, is_best=True)
             
             # Update learning rate
             self.lr_scheduler.step()
