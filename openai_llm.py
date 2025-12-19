@@ -8,7 +8,6 @@ import os
 import json
 import re
 from typing import Optional, Dict, Any
-import time
 
 
 class OpenAILLM:
@@ -213,15 +212,18 @@ def create_openai_llm_functions(model: str = "gpt-4",
     Returns:
         Tuple of (judge_fn, gradient_fn, optimizer_fn)
     """
-    llm = OpenAILLM(model=model, api_key=api_key, api_base=api_base)
+    # Create instances with appropriate temperatures for each role
+    judge_llm = OpenAILLM(model=model, temperature=judge_temperature, api_key=api_key, api_base=api_base)
+    gradient_llm = OpenAILLM(model=model, temperature=gradient_temperature, api_key=api_key, api_base=api_base)
+    optimizer_llm = OpenAILLM(model=model, temperature=optimizer_temperature, api_key=api_key, api_base=api_base)
     
     def judge_fn(prompt: str, response: str) -> float:
-        return llm.judge_llm_fn(prompt, response)
+        return judge_llm.judge_llm_fn(prompt, response)
     
     def gradient_fn(prompt: str) -> str:
-        return llm.gradient_llm_fn(prompt)
+        return gradient_llm.gradient_llm_fn(prompt)
     
     def optimizer_fn(prompt: str) -> str:
-        return llm.optimizer_llm_fn(prompt)
+        return optimizer_llm.optimizer_llm_fn(prompt)
     
     return judge_fn, gradient_fn, optimizer_fn

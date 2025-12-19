@@ -6,7 +6,6 @@ and dataset loading from JSONL files.
 """
 
 import os
-import sys
 import numpy as np
 from pathlib import Path
 from judge_prompt import JudgePrompt
