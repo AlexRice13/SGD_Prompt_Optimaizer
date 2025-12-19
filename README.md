@@ -78,108 +78,141 @@ Git-based prompt evolution tracking：
 - 自动checkpoint管理
 - 训练历史记录
 
+### 12. 数据集加载器 (`dataset_loader.py`)
+从JSONL文件加载训练数据：
+- 支持标准JSONL格式：`{"prompt": "...", "response": "...", "score": 8.5}`
+- 自动数据集划分（训练/验证）
+- 灵活的字段映射配置
+
+### 13. OpenAI集成 (`openai_llm.py`)
+OpenAI API集成支持：
+- Judge LLM：对响应进行打分
+- Gradient Agent：生成代理梯度
+- Optimizer：生成修改建议
+- 从环境变量读取API密钥和端点
+
 ## 安装依赖
 
 ```bash
-pip install numpy scipy
+pip install numpy scipy openai
 ```
 
 ## 快速开始
 
-### 1. 创建初始Prompt
+### 1. 设置环境变量
+
+```bash
+# 必需：OpenAI API密钥
+export OPENAI_API_KEY='your-api-key'
+
+# 可选：自定义API端点
+export OPENAI_API_BASE='https://your-custom-endpoint.com/v1'
+
+# 可选：模型选择
+export OPENAI_MODEL='gpt-4'
+
+# 可选：数据集路径
+export DATASET_PATH='/path/to/your/dataset.jsonl'
+```
+
+### 2. 准备数据集
+
+创建JSONL格式的数据集文件，每行一个JSON对象：
+
+```jsonl
+{"prompt": "Evaluate this response", "response": "This is a high quality answer...", "score": 8.5}
+{"prompt": "Evaluate this response", "response": "This is a poor answer", "score": 2.0}
+{"prompt": "Evaluate this response", "response": "This is a medium answer...", "score": 5.5}
+```
+
+### 3. 使用OpenAI API运行
 
 ```python
 from judge_prompt import JudgePrompt
+from trainer import SGDPromptTrainer
+from dataset_loader import DatasetLoader
+from openai_llm import create_openai_llm_functions
 
+# 创建初始Prompt
 sections = {
     "Scoring Criteria": "Evaluate responses based on quality...",
     "Scale": "Use 1-10 scale...",
     "Output Format": "Output only the numeric score."
 }
+prompt = JudgePrompt(sections, ["Scoring Criteria"])
 
-editable_sections = ["Scoring Criteria"]
-prompt = JudgePrompt(sections, editable_sections)
-```
+# 加载数据集
+loader = DatasetLoader()
+prompts, responses, scores = loader.load_dataset("dataset.jsonl")
+train_resp, train_scores, val_resp, val_scores = loader.split_dataset(
+    responses, scores, val_split=0.2
+)
 
-### 2. 准备LLM函数
+# 创建OpenAI LLM函数
+judge_fn, gradient_fn, optimizer_fn = create_openai_llm_functions(
+    model="gpt-4",
+    judge_temperature=0.3,
+    gradient_temperature=0.7,
+    optimizer_temperature=0.5
+)
 
-```python
-def judge_llm_fn(prompt: str, response: str) -> float:
-    # 调用LLM API对response打分
-    # 返回数值分数
-    pass
-
-def gradient_llm_fn(prompt: str) -> str:
-    # 调用强LLM分析统计信息
-    # 返回代理梯度文本
-    pass
-
-def optimizer_llm_fn(prompt: str) -> str:
-    # 调用强LLM生成修改建议
-    # 返回修改建议文本
-    pass
-```
-
-### 3. 准备训练数据
-
-```python
-import numpy as np
-
-train_responses = [...]  # 训练集响应列表
-train_human_scores = np.array([...])  # 对应的人类打分
-
-val_responses = [...]  # 验证集响应列表
-val_human_scores = np.array([...])  # 对应的人类打分
-```
-
-### 4. 配置并训练
-
-```python
-from trainer import SGDPromptTrainer
-
+# 配置并训练
 config = {
     'max_steps': 100,
     'batch_size': 32,
     'initial_lr': 0.1,
     'min_lr': 0.001,
     'warmup_steps': 10,
-    'alpha': 1.0,  # MAE权重
-    'beta': 1.0,   # Rank loss权重
+    'alpha': 1.0,
+    'beta': 1.0,
     'patience': 5,
 }
 
 trainer = SGDPromptTrainer(
-    judge_llm_fn=judge_llm_fn,
-    gradient_llm_fn=gradient_llm_fn,
-    optimizer_llm_fn=optimizer_llm_fn,
+    judge_llm_fn=judge_fn,
+    gradient_llm_fn=gradient_fn,
+    optimizer_llm_fn=optimizer_fn,
     initial_prompt=prompt,
-    train_responses=train_responses,
-    train_human_scores=train_human_scores,
-    val_responses=val_responses,
-    val_human_scores=val_human_scores,
+    train_responses=train_resp,
+    train_human_scores=train_scores,
+    val_responses=val_resp,
+    val_human_scores=val_scores,
     config=config
 )
 
 best_prompt = trainer.train()
+best_prompt.save("best_prompt.json")
 ```
 
-### 5. 保存结果
+### 4. 运行示例
 
-```python
-# 保存最佳prompt
-best_prompt.save("best_judge_prompt.json")
-
-# 保存训练历史
-trainer.save_history("training_history.json")
-```
-
-## 示例
-
-运行完整示例（使用mock LLM函数）：
+使用OpenAI API运行完整示例：
 
 ```bash
+# 设置API密钥
+export OPENAI_API_KEY='your-api-key'
+
+# 运行示例（会自动创建示例数据集）
 python example_usage.py
 ```
+
+如果没有设置API密钥，示例会自动回退到mock函数用于测试。
+
+## 环境变量配置
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `OPENAI_API_KEY` | OpenAI API密钥（必需） | - |
+| `OPENAI_API_BASE` | 自定义API端点（可选） | OpenAI默认端点 |
+| `OPENAI_MODEL` | 使用的模型 | `gpt-4` |
+| `DATASET_PATH` | 数据集文件路径 | `sample_dataset.jsonl` |
+| `MAX_STEPS` | 训练步数 | `10` |
+| `BATCH_SIZE` | 批量大小 | `16` |
+| `INITIAL_LR` | 初始学习率 | `0.1` |
+| `MIN_LR` | 最小学习率 | `0.01` |
+| `WARMUP_STEPS` | 预热步数 | `2` |
+| `PATIENCE` | 早停耐心值 | `5` |
+| `ENABLE_VERSION_CONTROL` | 启用版本控制 | `false` |
 
 ## 架构设计
 
@@ -199,19 +232,22 @@ python example_usage.py
 
 ```
 .
-├── judge_prompt.py         # Prompt结构表示
-├── forward_pass.py         # 前向传播/打分
-├── loss_functions.py       # 损失函数实现
-├── gradient_agent.py       # 代理梯度构造
-├── optimizer.py            # Prompt优化器
-├── lr_scheduler.py         # 学习率调度
-├── batch_sampler.py        # 批量采样
-├── metrics.py              # 评估指标
-├── early_stopping.py       # 早停机制
-├── version_control.py      # Git版本控制
-├── trainer.py              # 主训练器
-├── example_usage.py        # 使用示例
-└── README.md               # 本文档
+├── judge_prompt.py            # Prompt结构表示
+├── forward_pass.py            # 前向传播/打分
+├── loss_functions.py          # 损失函数实现
+├── gradient_agent.py          # 代理梯度构造
+├── optimizer.py               # Prompt优化器
+├── lr_scheduler.py            # 学习率调度
+├── batch_sampler.py           # 批量采样
+├── metrics.py                 # 评估指标
+├── early_stopping.py          # 早停机制
+├── version_control.py         # Git版本控制
+├── trainer.py                 # 主训练器
+├── dataset_loader.py          # 数据集加载器
+├── openai_llm.py              # OpenAI API集成
+├── example_usage.py           # 使用示例（OpenAI版）
+├── example_mock_functions.py  # Mock函数（测试用）
+└── README.md                  # 本文档
 ```
 
 ## 高级用法

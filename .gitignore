@@ -36,6 +36,7 @@ ENV/
 checkpoints/
 *.json
 *.log
+*.jsonl
 
 # OS
 .DS_Store

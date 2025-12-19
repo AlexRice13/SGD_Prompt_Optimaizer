@@ -1,66 +1,102 @@
 """
 Example usage of the SGD Prompt Optimization Framework.
 
-This script demonstrates how to use the framework with mock LLM functions.
+This script demonstrates how to use the framework with real OpenAI API
+and dataset loading from JSONL files.
 """
 
+import os
+import sys
 import numpy as np
+from pathlib import Path
 from judge_prompt import JudgePrompt
 from trainer import SGDPromptTrainer
+from dataset_loader import DatasetLoader
+from openai_llm import create_openai_llm_functions
 
 
-def mock_judge_llm(prompt: str, response: str) -> float:
+def check_environment():
+    """Check if required environment variables are set."""
+    if not os.environ.get("OPENAI_API_KEY"):
+        print("Error: OPENAI_API_KEY environment variable not set.")
+        print("Please set it with: export OPENAI_API_KEY='your-api-key'")
+        print("\nFor testing without OpenAI API, you can use the mock functions.")
+        return False
+    return True
+
+
+def load_dataset_from_file(filepath: str, val_split: float = 0.2):
     """
-    Mock Judge LLM function.
+    Load dataset from JSONL file.
     
-    In practice, this would call a real LLM API with the prompt and response,
-    and parse the returned score.
+    Args:
+        filepath: Path to JSONL file
+        val_split: Fraction for validation split
+        
+    Returns:
+        Tuple of (train_responses, train_scores, val_responses, val_scores)
     """
-    # Simulate scoring based on response length and simple heuristics
-    score = min(10.0, max(1.0, len(response) / 20 + np.random.normal(5, 1)))
-    return score
-
-
-def mock_gradient_llm(prompt: str) -> str:
-    """
-    Mock Gradient Agent LLM function.
+    print(f"Loading dataset from {filepath}...")
     
-    In practice, this would call a strong LLM to analyze statistics
-    and generate proxy gradient.
-    """
-    return """
-OVERESTIMATION_CAUSES:
-- The prompt may be over-rewarding verbose responses
-- Lack of quality assessment beyond length
-
-UNDERESTIMATION_CAUSES:
-- The prompt may not capture concise but high-quality responses
-- Missing criteria for content accuracy
-
-IMPROVEMENT_DIRECTION:
-- Add explicit quality metrics beyond length
-- Balance between conciseness and completeness
-- Include accuracy/correctness criteria
-"""
-
-
-def mock_optimizer_llm(prompt: str) -> str:
-    """
-    Mock Optimizer LLM function.
+    loader = DatasetLoader(
+        prompt_field="prompt",
+        response_field="response",
+        score_field="score"
+    )
     
-    In practice, this would call a strong LLM to generate
-    specific modification suggestions.
+    # Load and parse dataset
+    prompts, responses, scores = loader.load_dataset(filepath)
+    print(f"Loaded {len(responses)} samples")
+    
+    # Split into train/val
+    train_responses, train_scores, val_responses, val_scores = loader.split_dataset(
+        responses, scores, val_split=val_split, seed=42
+    )
+    
+    print(f"Train: {len(train_responses)} samples, Val: {len(val_responses)} samples")
+    
+    return train_responses, train_scores, val_responses, val_scores
+
+
+def create_sample_dataset(output_path: str = "sample_dataset.jsonl", n_samples: int = 50):
     """
-    return """
-SECTION_TO_MODIFY: Scoring Criteria
-OLD_CONTENT:
-Evaluate responses based on completeness and clarity.
-NEW_CONTENT:
-Evaluate responses based on completeness, clarity, and accuracy. 
-Balance conciseness with thoroughness - prefer responses that are 
-comprehensive yet concise over those that are merely lengthy.
-RATIONALE: Added accuracy criterion and guidance to avoid over-rewarding verbosity
-"""
+    Create a sample JSONL dataset for demonstration.
+    
+    Args:
+        output_path: Path to output JSONL file
+        n_samples: Number of samples to generate
+    """
+    import json
+    
+    print(f"Creating sample dataset with {n_samples} samples...")
+    
+    np.random.seed(42)
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        for i in range(n_samples):
+            # Generate sample data with varying quality
+            quality = np.random.choice(['low', 'medium', 'high'], p=[0.2, 0.5, 0.3])
+            
+            if quality == 'low':
+                response = "Short response. " * np.random.randint(1, 3)
+                score = float(np.random.uniform(1, 4))
+            elif quality == 'medium':
+                response = "This is a medium quality response with some detail. " * np.random.randint(2, 5)
+                score = float(np.random.uniform(4, 7))
+            else:
+                response = "This is a high quality, comprehensive response with excellent detail and accuracy. " * np.random.randint(3, 6)
+                score = float(np.random.uniform(7, 10))
+            
+            item = {
+                "prompt": "Evaluate this response",
+                "response": response,
+                "score": round(score, 2)
+            }
+            
+            f.write(json.dumps(item) + '\n')
+    
+    print(f"Sample dataset created at {output_path}")
+    return output_path
 
 
 def create_example_prompt() -> JudgePrompt:
@@ -106,8 +142,11 @@ def generate_mock_data(n_samples: int = 100):
 
 def main():
     """Main example execution."""
-    print("SGD Prompt Optimization Framework - Example Usage")
-    print("=" * 60)
+    print("SGD Prompt Optimization Framework - Example Usage with OpenAI")
+    print("=" * 70)
+    
+    # Check environment
+    use_openai = check_environment()
     
     # Create initial prompt
     print("\n1. Creating initial JudgePrompt...")
@@ -115,31 +154,67 @@ def main():
     print(f"Prompt has {len(initial_prompt.sections)} sections")
     print(f"Editable sections: {', '.join(initial_prompt.editable_sections)}")
     
-    # Generate mock data
-    print("\n2. Generating mock training/validation data...")
-    train_responses, train_scores = generate_mock_data(100)
-    val_responses, val_scores = generate_mock_data(30)
-    print(f"Train: {len(train_responses)} samples")
-    print(f"Val: {len(val_responses)} samples")
+    # Load or create dataset
+    print("\n2. Loading dataset...")
+    dataset_path = os.environ.get("DATASET_PATH", "sample_dataset.jsonl")
+    
+    # Create sample dataset if it doesn't exist
+    if not Path(dataset_path).exists():
+        print(f"Dataset not found at {dataset_path}")
+        dataset_path = create_sample_dataset(dataset_path, n_samples=50)
+    
+    # Load dataset from JSONL file
+    train_responses, train_scores, val_responses, val_scores = load_dataset_from_file(
+        dataset_path, val_split=0.2
+    )
+    
+    # Setup LLM functions
+    print("\n3. Setting up LLM functions...")
+    if use_openai:
+        print("Using OpenAI API")
+        model = os.environ.get("OPENAI_MODEL", "gpt-4")
+        print(f"Model: {model}")
+        
+        try:
+            judge_fn, gradient_fn, optimizer_fn = create_openai_llm_functions(
+                model=model,
+                judge_temperature=0.3,
+                gradient_temperature=0.7,
+                optimizer_temperature=0.5
+            )
+            print("OpenAI functions created successfully")
+        except Exception as e:
+            print(f"Error creating OpenAI functions: {e}")
+            print("Falling back to mock functions")
+            use_openai = False
+    
+    if not use_openai:
+        print("Using mock LLM functions (for testing without API)")
+        from example_mock_functions import create_mock_llm_functions
+        judge_fn, gradient_fn, optimizer_fn = create_mock_llm_functions()
     
     # Configure trainer
-    print("\n3. Configuring trainer...")
+    print("\n4. Configuring trainer...")
     config = {
-        'max_steps': 10,  # Small number for demo
-        'batch_size': 20,
-        'initial_lr': 0.1,
-        'min_lr': 0.01,
-        'warmup_steps': 2,
-        'patience': 5,
-        'enable_version_control': False,  # Disable for demo
+        'max_steps': int(os.environ.get("MAX_STEPS", "10")),
+        'batch_size': int(os.environ.get("BATCH_SIZE", "16")),
+        'initial_lr': float(os.environ.get("INITIAL_LR", "0.1")),
+        'min_lr': float(os.environ.get("MIN_LR", "0.01")),
+        'warmup_steps': int(os.environ.get("WARMUP_STEPS", "2")),
+        'patience': int(os.environ.get("PATIENCE", "5")),
+        'enable_version_control': os.environ.get("ENABLE_VERSION_CONTROL", "false").lower() == "true",
     }
     
+    print(f"Configuration:")
+    for key, value in config.items():
+        print(f"  {key}: {value}")
+    
     # Create trainer
-    print("\n4. Initializing trainer...")
+    print("\n5. Initializing trainer...")
     trainer = SGDPromptTrainer(
-        judge_llm_fn=mock_judge_llm,
-        gradient_llm_fn=mock_gradient_llm,
-        optimizer_llm_fn=mock_optimizer_llm,
+        judge_llm_fn=judge_fn,
+        gradient_llm_fn=gradient_fn,
+        optimizer_llm_fn=optimizer_fn,
         initial_prompt=initial_prompt,
         train_responses=train_responses,
         train_human_scores=train_scores,
@@ -149,22 +224,30 @@ def main():
     )
     
     # Train
-    print("\n5. Starting training...")
-    print("=" * 60)
+    print("\n6. Starting training...")
+    print("=" * 70)
     best_prompt = trainer.train()
     
     # Results
-    print("\n" + "=" * 60)
-    print("6. Training completed!")
+    print("\n" + "=" * 70)
+    print("7. Training completed!")
     print("\nBest Prompt:")
     print(best_prompt.get_full_prompt())
     
-    # Save history
-    print("\n7. Saving training history...")
+    # Save results
+    print("\n8. Saving results...")
+    best_prompt.save("best_prompt.json")
+    print("Best prompt saved to best_prompt.json")
+    
     trainer.save_history("training_history.json")
-    print("History saved to training_history.json")
+    print("Training history saved to training_history.json")
     
     print("\nExample completed successfully!")
+    print("\nTo use with your own dataset:")
+    print("  1. Create a JSONL file with format: {\"prompt\": \"...\", \"response\": \"...\", \"score\": 8.5}")
+    print("  2. Set environment variable: export DATASET_PATH=/path/to/your/dataset.jsonl")
+    print("  3. Set OpenAI API key: export OPENAI_API_KEY=your-api-key")
+    print("  4. Run: python example_usage.py")
 
 
 if __name__ == "__main__":
