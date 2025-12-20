@@ -13,24 +13,32 @@ class PromptOptimizer:
     """
     Optimizer that generates prompt modification suggestions.
     
-    Permissions are bound to learning rate:
-    - Low LR: Only modify content of existing editable sections via git patch
-    - High LR: Can add or remove editable sections (but never modify/remove meta_sections)
+    Permissions are bound to learning rate with threshold ratio:
+    - High LR (above threshold ratio): Can add or remove editable sections
+    - Low LR (below threshold ratio): Only modify content of existing editable sections
+    - Modification character limit scales with LR ratio
     
     Note: meta_sections can NEVER be modified or deleted at any LR stage.
     """
     
     def __init__(self, llm_fn: Callable[[str], str], 
-                 lr_threshold: float = 0.01):
+                 structural_edit_threshold_ratio: float = 0.5,
+                 initial_lr: float = 0.1):
         """
         Initialize optimizer.
         
         Args:
             llm_fn: Function that takes a prompt and returns text
-            lr_threshold: Threshold for high vs low learning rate permissions
+            structural_edit_threshold_ratio: Ratio of max LR above which structural 
+                                             edits (add/remove sections) are allowed.
+                                             E.g., 0.5 means structural edits only when
+                                             current_lr >= 0.5 * initial_lr
+            initial_lr: Initial learning rate to compute threshold
         """
         self.llm_fn = llm_fn
-        self.lr_threshold = lr_threshold
+        self.structural_edit_threshold_ratio = structural_edit_threshold_ratio
+        self.initial_lr = initial_lr
+        self.structural_edit_threshold = initial_lr * structural_edit_threshold_ratio
     
     def get_permissions(self, learning_rate: float) -> Dict[str, bool]:
         """
@@ -42,7 +50,8 @@ class PromptOptimizer:
         Returns:
             Dictionary of permission flags
         """
-        is_high_lr = learning_rate >= self.lr_threshold
+        # Structural edits only allowed when LR is above threshold
+        is_high_lr = learning_rate >= self.structural_edit_threshold
         
         return {
             'modify_content': True,  # Always allowed for editable sections
@@ -53,17 +62,23 @@ class PromptOptimizer:
     
     def compute_max_chars(self, learning_rate: float, base_limit: int = 100) -> int:
         """
-        Compute maximum character changes based on learning rate.
+        Compute maximum character changes based on learning rate ratio.
+        
+        Character limit scales with (current_lr / initial_lr) ratio,
+        so modifications become more constrained as training progresses.
         
         Args:
             learning_rate: Current learning rate
-            base_limit: Base character limit at LR=1.0
+            base_limit: Base character limit at initial LR
             
         Returns:
             Maximum allowed character changes
         """
-        # Scale character limit with learning rate
-        return max(10, int(base_limit * learning_rate))
+        # Scale character limit with LR ratio relative to initial LR
+        lr_ratio = learning_rate / self.initial_lr if self.initial_lr > 0 else 1.0
+        lr_ratio = max(0.0, min(1.0, lr_ratio))  # Clamp to [0, 1]
+        
+        return max(10, int(base_limit * lr_ratio))
     
     def generate_modification_suggestion(self, 
                                         current_prompt: str,
@@ -97,14 +112,15 @@ Proxy Gradient (Analysis):
 
 Optimization Constraints:
 - Learning Rate: {learning_rate:.4f}
+- Structural Edit Threshold: {self.structural_edit_threshold:.4f}
 - Maximum character changes: {max_chars}
 - Editable sections: {', '.join(editable_sections)}
 - Meta sections (CANNOT modify or delete): {', '.join(meta_sections)}
 
 Permissions:
 - Modify content in editable sections: {permissions['modify_content']}
-- Add new sections: {permissions['add_sections']}
-- Remove editable sections: {permissions['remove_sections']}
+- Add new sections: {permissions['add_sections']} (only above threshold)
+- Remove editable sections: {permissions['remove_sections']} (only above threshold)
 
 Important Rules:
 - Meta sections ({', '.join(meta_sections)}) can NEVER be modified or deleted

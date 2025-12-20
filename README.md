@@ -37,11 +37,13 @@
 
 ### 5. 优化器 (`optimizer.py`)
 生成Prompt修改建议：
-- **学习率绑定权限**:
-  - 低LR: 仅修改现有section内容
-  - 高LR: 可增删section、重排结构
-- 字符级别的step clipping
+- **学习率绑定权限（带阈值比率）**:
+  - **结构编辑阈值**：当 `current_lr >= initial_lr * threshold_ratio` 时允许增删section
+  - **内容修改阶段**：低于阈值时仅修改现有section内容
+  - **动态字符限制**：修改字符数随 `current_lr / initial_lr` 比率缩放
+  - 默认 `structural_edit_threshold_ratio = 0.5`（训练前半段允许结构调整）
 - 语义约束检查
+- Meta sections永不可修改
 
 ### 6. 学习率调度 (`lr_scheduler.py`)
 - 余弦退火 (Cosine Annealing)
@@ -257,6 +259,7 @@ config = {
     'logging_steps': 5,   # 每5步打印一次日志 (TRL-style)
     'eval_steps': 10,     # 每10步完整评估一次 (TRL-style)
     'max_workers': 10,    # 并发调用LLM的线程数
+    'structural_edit_threshold_ratio': 0.5,  # 结构编辑阈值比率 (新增)
 }
 
 trainer = SGDPromptTrainer(

@@ -131,7 +131,13 @@ Please provide your score:"""
     
     def _extract_score(self, text: str) -> float:
         """
-        Extract numeric score from LLM response.
+        Extract numeric score from LLM response using regex.
+        
+        Supports various formats:
+        - "Score: 8.5" or "score: 8.5"
+        - "分数: 8.5" or "分数：8.5" (Chinese)
+        - "Rating: 8.5"
+        - Plain number: "8.5"
         
         Args:
             text: LLM response text
@@ -139,19 +145,21 @@ Please provide your score:"""
         Returns:
             Extracted score as float
         """
-        # Try to find a number in the text
-        # Look for patterns like "8.5", "8", "Score: 7.5", etc.
+        # Try patterns in order of specificity
         patterns = [
-            r'(?:score|rating)[\s:]*([0-9]+\.?[0-9]*)',  # "score: 8.5"
-            r'^([0-9]+\.?[0-9]*)',  # Number at start
-            r'([0-9]+\.?[0-9]*)',  # Any number
+            r'(?:score|Score|SCORE)[\s:：]+([0-9]+\.?[0-9]*)',  # English "score"
+            r'(?:分数|評分)[\s:：]+([0-9]+\.?[0-9]*)',  # Chinese "分数" or "評分"
+            r'(?:rating|Rating|RATING)[\s:：]+([0-9]+\.?[0-9]*)',  # "rating"
+            r'^([0-9]+\.?[0-9]*)$',  # Just a number on its own line
+            r'([0-9]+\.?[0-9]*)',  # Any number (last resort)
         ]
         
         for pattern in patterns:
-            match = re.search(pattern, text.lower())
+            match = re.search(pattern, text, re.MULTILINE)
             if match:
                 try:
-                    return float(match.group(1))
+                    score = float(match.group(1))
+                    return score
                 except (ValueError, IndexError):
                     continue
         
