@@ -12,7 +12,7 @@
 
 ### 1. 结构化Prompt管理 (`judge_prompt.py`)
 - 将Prompt分为多个section（可编辑/冻结）
-- 支持JSON序列化和加载
+- 支持JSON序列化和加载（详见 [JudgePrompt格式说明](JUDGE_PROMPT_FORMAT.md)）
 - 严格的修改权限控制
 
 ### 2. 前向传播 (`forward_pass.py`)
@@ -111,11 +111,47 @@ export OPENAI_API_BASE='https://your-custom-endpoint.com/v1'
 # 可选：模型选择
 export OPENAI_MODEL='gpt-4'
 
+# 可选：初始提示词文件路径
+export PROMPT_PATH='/path/to/your/initial_judge_prompt.json'
+
 # 可选：数据集路径
 export DATASET_PATH='/path/to/your/dataset.jsonl'
 ```
 
-### 2. 准备数据集
+### 2. 准备初始JudgePrompt
+
+创建 JSON 格式的 JudgePrompt 文件（详细格式说明见 [JUDGE_PROMPT_FORMAT.md](JUDGE_PROMPT_FORMAT.md)）：
+
+```json
+{
+  "sections": {
+    "Scoring Criteria": "根据完整性、清晰度和准确性评估响应。",
+    "Scale": "使用 1 到 10 的评分标准，其中 1 表示差，10 表示优秀。",
+    "Output Format": "仅输出数字分数，不要输出其他内容。"
+  },
+  "editable_sections": [
+    "Scoring Criteria"
+  ]
+}
+```
+
+或使用 Python 代码创建：
+
+```python
+from judge_prompt import JudgePrompt
+
+prompt = JudgePrompt(
+    sections={
+        "Scoring Criteria": "你的评分标准...",
+        "Scale": "使用 1-10 评分标准",
+        "Output Format": "仅输出数字分数"
+    },
+    editable_sections=["Scoring Criteria"]
+)
+prompt.save("initial_judge_prompt.json")
+```
+
+### 3. 准备数据集
 
 创建JSONL格式的数据集文件，每行一个JSON对象：
 
@@ -125,7 +161,7 @@ export DATASET_PATH='/path/to/your/dataset.jsonl'
 {"prompt": "Evaluate this response", "response": "This is a medium answer...", "score": 5.5}
 ```
 
-### 3. 使用OpenAI API运行
+### 4. 使用OpenAI API运行
 
 ```python
 from judge_prompt import JudgePrompt

@@ -111,6 +111,56 @@ def create_example_prompt() -> JudgePrompt:
     return JudgePrompt(sections, editable_sections)
 
 
+def create_example_prompt_file(output_path: str = "initial_judge_prompt.json") -> str:
+    """
+    Create an example JudgePrompt JSON file for demonstration.
+    
+    The JSON file format is:
+    {
+        "sections": {
+            "Scoring Criteria": "...",
+            "Scale": "...",
+            "Output Format": "..."
+        },
+        "editable_sections": ["Scoring Criteria"]
+    }
+    
+    Args:
+        output_path: Path to output JSON file
+        
+    Returns:
+        Path to created file
+    """
+    print(f"Creating example JudgePrompt file at {output_path}...")
+    
+    prompt = create_example_prompt()
+    prompt.save(output_path)
+    
+    print(f"Example JudgePrompt file created at {output_path}")
+    print(f"File format:")
+    with open(output_path, 'r') as f:
+        print(f.read())
+    
+    return output_path
+
+
+def load_prompt_from_file(filepath: str) -> JudgePrompt:
+    """
+    Load JudgePrompt from JSON file.
+    
+    Args:
+        filepath: Path to JSON file containing JudgePrompt
+        
+    Returns:
+        Loaded JudgePrompt instance
+    """
+    print(f"Loading JudgePrompt from {filepath}...")
+    prompt = JudgePrompt.load(filepath)
+    print(f"Loaded prompt with {len(prompt.sections)} sections")
+    print(f"Editable sections: {', '.join(prompt.editable_sections)}")
+    return prompt
+
+
 def generate_mock_data(n_samples: int = 100):
     """Generate mock training/validation data."""
     np.random.seed(42)
@@ -147,9 +197,20 @@ def main():
     # Check environment
     use_openai = check_environment()
     
-    # Create initial prompt
-    print("\n1. Creating initial JudgePrompt...")
-    initial_prompt = create_example_prompt()
+    # Create or load initial prompt
+    print("\n1. Loading/Creating initial JudgePrompt...")
+    prompt_path = os.environ.get("PROMPT_PATH", "initial_judge_prompt.json")
+    
+    if Path(prompt_path).exists():
+        # Load existing prompt from JSON file
+        initial_prompt = load_prompt_from_file(prompt_path)
+    else:
+        # Create example prompt file if it doesn't exist
+        print(f"Prompt file not found at {prompt_path}")
+        create_example_prompt_file(prompt_path)
+        initial_prompt = JudgePrompt.load(prompt_path)
+        print(f"Created and loaded example prompt")
+    
     print(f"Prompt has {len(initial_prompt.sections)} sections")
     print(f"Editable sections: {', '.join(initial_prompt.editable_sections)}")
     
@@ -242,10 +303,22 @@ def main():
     print("Training history saved to training_history.json")
     
     print("\nExample completed successfully!")
-    print("\nTo use with your own dataset:")
-    print("  1. Create a JSONL file with format: {\"prompt\": \"...\", \"response\": \"...\", \"score\": 8.5}")
-    print("  2. Set environment variable: export DATASET_PATH=/path/to/your/dataset.jsonl")
-    print("  3. Set OpenAI API key: export OPENAI_API_KEY=your-api-key")
+    print("\nTo use with your own data:")
+    print("  1. Create a JudgePrompt JSON file (initial_judge_prompt.json):")
+    print("     {")
+    print("       \"sections\": {")
+    print("         \"Scoring Criteria\": \"Your criteria...\",")
+    print("         \"Scale\": \"Use 1-10 scale...\",")
+    print("         \"Output Format\": \"Output only the numeric score.\"")
+    print("       },")
+    print("       \"editable_sections\": [\"Scoring Criteria\"]")
+    print("     }")
+    print("  2. Create a JSONL dataset file with format:")
+    print("     {\"prompt\": \"...\", \"response\": \"...\", \"score\": 8.5}")
+    print("  3. Set environment variables:")
+    print("     export PROMPT_PATH=/path/to/your/initial_judge_prompt.json")
+    print("     export DATASET_PATH=/path/to/your/dataset.jsonl")
+    print("     export OPENAI_API_KEY=your-api-key")
     print("  4. Run: python example_usage.py")
 
 
