@@ -138,7 +138,7 @@ def create_example_prompt_file(output_path: str = "initial_judge_prompt.json") -
     
     print(f"Example JudgePrompt file created at {output_path}")
     print(f"File format:")
-    with open(output_path, 'r') as f:
+    with open(output_path, 'r', encoding='utf-8') as f:
         print(f.read())
     
     return output_path
