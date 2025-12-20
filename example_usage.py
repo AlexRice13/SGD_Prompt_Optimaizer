@@ -266,6 +266,9 @@ def main():
         'min_lr': float(os.environ.get("MIN_LR", "0.01")),
         'warmup_steps': int(os.environ.get("WARMUP_STEPS", "2")),
         'patience': int(os.environ.get("PATIENCE", "5")),
+        'logging_steps': int(os.environ.get("LOGGING_STEPS", "1")),  # Log every N steps (TRL-style)
+        'eval_steps': int(os.environ.get("EVAL_STEPS", "1")),        # Evaluate every N steps (TRL-style)
+        'max_workers': int(os.environ.get("MAX_WORKERS", "10")),     # Concurrent LLM calls
         'enable_version_control': os.environ.get("ENABLE_VERSION_CONTROL", "false").lower() == "true",
     }
     

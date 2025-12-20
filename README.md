@@ -18,6 +18,8 @@
 ### 2. 前向传播 (`forward_pass.py`)
 - 使用Judge LLM对响应进行打分
 - 支持self-consistency variance估计
+- **并发LLM调用**：使用ThreadPoolExecutor实现高效批量打分
+- **顺序保证**：使用map模式确保返回顺序与输入一致
 - 批量打分接口
 
 ### 3. 损失函数 (`loss_functions.py`)
@@ -77,6 +79,10 @@ Git-based prompt evolution tracking：
 - 完整的SGD训练循环
 - 自动checkpoint管理
 - 训练历史记录
+- **TRL风格接口**：
+  - `logging_steps`: 可配置的日志打印频率（每N步）
+  - `eval_steps`: 可配置的评估频率（每N步完整评估）
+  - 清晰的训练进度输出格式
 
 ### 12. 数据集加载器 (`dataset_loader.py`)
 从JSONL文件加载训练数据：
@@ -90,6 +96,26 @@ OpenAI API集成支持：
 - Gradient Agent：生成代理梯度
 - Optimizer：生成修改建议
 - 从环境变量读取API密钥和端点
+- **支持并发调用**：高效利用API实现批量处理
+
+## 性能优化
+
+### 并发LLM调用
+框架支持并发调用LLM API，显著提升训练速度：
+- **ForwardPass**：批量打分时使用ThreadPoolExecutor并发调用Judge LLM
+- **顺序保证**：使用`executor.map()`确保返回顺序与输入顺序一致
+- **可配置并发度**：通过`max_workers`参数控制并发线程数（默认10）
+
+### TRL风格的训练接口
+参考Transformer Reinforcement Learning (TRL)库的设计：
+- **`logging_steps`**：控制日志打印频率，避免过度输出（默认每步打印）
+- **`eval_steps`**：控制完整评估频率，在评估步骤之间只执行训练（默认每步评估）
+- 示例：`logging_steps=5, eval_steps=10` 表示每5步打印日志，每10步完整评估
+
+这种设计在训练长时间运行时特别有用，可以：
+- 减少I/O开销
+- 加快训练速度
+- 保持清晰的进度监控
 
 ## 安装依赖
 
@@ -228,6 +254,9 @@ config = {
     'alpha': 1.0,
     'beta': 1.0,
     'patience': 5,
+    'logging_steps': 5,   # 每5步打印一次日志 (TRL-style)
+    'eval_steps': 10,     # 每10步完整评估一次 (TRL-style)
+    'max_workers': 10,    # 并发调用LLM的线程数
 }
 
 trainer = SGDPromptTrainer(
@@ -274,6 +303,9 @@ python example_usage.py
 | `MIN_LR` | 最小学习率 | `0.01` |
 | `WARMUP_STEPS` | 预热步数 | `2` |
 | `PATIENCE` | 早停耐心值 | `5` |
+| `LOGGING_STEPS` | 日志打印频率（每N步） | `1` |
+| `EVAL_STEPS` | 评估频率（每N步） | `1` |
+| `MAX_WORKERS` | LLM并发调用线程数 | `10` |
 | `ENABLE_VERSION_CONTROL` | 启用版本控制 | `false` |
 
 ## 架构设计

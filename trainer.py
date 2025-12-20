@@ -99,6 +99,9 @@ class SGDPromptTrainer:
             'patience': 5,
             'checkpoint_dir': './checkpoints',
             'enable_version_control': True,
+            'logging_steps': 1,  # Log every N steps (TRL-style)
+            'eval_steps': 1,     # Evaluate every N steps (TRL-style)
+            'max_workers': 10,   # Max concurrent threads for LLM calls
         }
         
         for key, value in defaults.items():
@@ -110,7 +113,8 @@ class SGDPromptTrainer:
         # Forward pass
         self.forward_pass = ForwardPass(
             self.judge_llm_fn,
-            n_consistency_samples=self.config['n_consistency_samples']
+            n_consistency_samples=self.config['n_consistency_samples'],
+            max_workers=self.config['max_workers']
         )
         
         # Loss functions
@@ -259,28 +263,44 @@ class SGDPromptTrainer:
     
     def train(self) -> JudgePrompt:
         """
-        Run full training loop.
+        Run full training loop with configurable logging and evaluation.
         
         Returns:
             Best JudgePrompt found during training
         """
         print(f"Starting training for {self.config['max_steps']} steps...")
         print(f"Train samples: {len(self.train_responses)}, Val samples: {len(self.val_responses)}")
+        print(f"Logging every {self.config['logging_steps']} steps, "
+              f"evaluating every {self.config['eval_steps']} steps")
         
         # Initial evaluation
         val_loss, val_metrics = self.evaluate(self.val_responses, self.val_human_scores)
-        print(f"\nInitial validation - Loss: {val_loss:.4f}, MAE: {val_metrics['mae']:.4f}, "
+        train_loss, train_metrics = self.evaluate(self.train_responses, self.train_human_scores)
+        
+        print(f"\n{'='*80}")
+        print(f"Initial Evaluation")
+        print(f"  Train Loss: {train_loss:.4f}, MAE: {train_metrics['mae']:.4f}")
+        print(f"  Val Loss: {val_loss:.4f}, MAE: {val_metrics['mae']:.4f}, "
               f"Kendall τ: {val_metrics['kendall_tau']:.4f}")
+        print(f"{'='*80}")
+        
+        # Update history
+        self.history['train_loss'].append(train_loss)
+        self.history['val_loss'].append(val_loss)
+        self.history['train_metrics'].append(train_metrics)
+        self.history['val_metrics'].append(val_metrics)
+        self.history['learning_rates'].append(0.0)
         
         # Save initial prompt
         if self.version_control:
             self.current_prompt.save(self.version_control.prompt_path)
             self.version_control.commit_prompt_update(
-                0, 0.0, val_loss, val_metrics,
+                0, train_loss, val_loss, val_metrics,
                 "Initial prompt", "Baseline"
             )
         
         best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
+        best_val_loss = val_loss
         
         for step in range(self.config['max_steps']):
             self.current_step = step + 1
@@ -288,30 +308,54 @@ class SGDPromptTrainer:
             # Training step
             step_info = self.train_step()
             
-            # Evaluation
-            val_loss, val_metrics = self.evaluate(self.val_responses, self.val_human_scores)
-            train_loss, train_metrics = self.evaluate(self.train_responses, self.train_human_scores)
+            # Determine if we should evaluate this step
+            should_eval = (self.current_step % self.config['eval_steps'] == 0) or \
+                         (self.current_step == self.config['max_steps'])
             
-            # Update history
-            self.history['train_loss'].append(train_loss)
-            self.history['val_loss'].append(val_loss)
-            self.history['train_metrics'].append(train_metrics)
-            self.history['val_metrics'].append(val_metrics)
-            self.history['learning_rates'].append(step_info['learning_rate'])
+            # Determine if we should log this step
+            should_log = (self.current_step % self.config['logging_steps'] == 0) or \
+                        (self.current_step == self.config['max_steps'])
             
-            # Log
-            print(f"\nStep {self.current_step}/{self.config['max_steps']}")
-            print(f"  LR: {step_info['learning_rate']:.4f}")
-            print(f"  Train Loss: {train_loss:.4f} (MAE: {train_metrics['mae']:.4f}, "
-                  f"Rank: {train_metrics['rank_loss_component']:.4f})")
-            print(f"  Val Loss: {val_loss:.4f} (MAE: {val_metrics['mae']:.4f}, "
-                  f"Kendall τ: {val_metrics['kendall_tau']:.4f})")
+            # Evaluation (only on eval_steps)
+            if should_eval:
+                val_loss, val_metrics = self.evaluate(self.val_responses, self.val_human_scores)
+                train_loss, train_metrics = self.evaluate(self.train_responses, self.train_human_scores)
+                
+                # Update history
+                self.history['train_loss'].append(train_loss)
+                self.history['val_loss'].append(val_loss)
+                self.history['train_metrics'].append(train_metrics)
+                self.history['val_metrics'].append(val_metrics)
+                self.history['learning_rates'].append(step_info['learning_rate'])
+            else:
+                # Use step loss for quick feedback (not full evaluation)
+                train_loss = step_info['train_loss']
+                val_loss = None
+                train_metrics = None
+                val_metrics = None
             
-            if step_info['modification_valid']:
-                print(f"  Modified section: {step_info['modified_section']}")
+            # Logging (TRL-style)
+            if should_log:
+                print(f"\n{'='*80}")
+                print(f"Step {self.current_step}/{self.config['max_steps']}")
+                print(f"  LR: {step_info['learning_rate']:.4f}")
+                print(f"  Step Train Loss: {step_info['train_loss']:.4f} "
+                      f"(MAE: {step_info['mae']:.4f}, Rank: {step_info['rank_loss']:.4f})")
+                
+                if should_eval:
+                    print(f"  Full Train Loss: {train_loss:.4f} (MAE: {train_metrics['mae']:.4f}, "
+                          f"Rank: {train_metrics['rank_loss_component']:.4f})")
+                    print(f"  Val Loss: {val_loss:.4f} (MAE: {val_metrics['mae']:.4f}, "
+                          f"Kendall τ: {val_metrics['kendall_tau']:.4f})")
+                
+                if step_info['modification_valid']:
+                    print(f"  ✓ Modified section: {step_info['modified_section']}")
+                else:
+                    print(f"  ✗ No valid modification applied")
+                print(f"{'='*80}")
             
-            # Save checkpoint
-            if self.version_control and step_info['modification_valid']:
+            # Save checkpoint (only when modification is valid)
+            if self.version_control and step_info['modification_valid'] and should_eval:
                 self.current_prompt.save(self.version_control.prompt_path)
                 self.version_control.commit_prompt_update(
                     self.current_step,
@@ -322,22 +366,28 @@ class SGDPromptTrainer:
                     step_info.get('modification_rationale', '')
                 )
             
-            # Update best prompt if this is the best so far (before early stopping check)
-            if val_loss <= self.early_stopping.get_best_loss():
+            # Update best prompt (only on evaluation steps)
+            if should_eval and val_loss <= best_val_loss:
+                best_val_loss = val_loss
                 best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
                 if self.version_control:
                     self.version_control.create_checkpoint_tag(self.current_step, is_best=True)
             
-            # Check early stopping
-            if self.early_stopping.step(val_loss, val_metrics, self.current_step):
-                print(f"\nEarly stopping triggered at step {self.current_step}")
+            # Check early stopping (only on evaluation steps)
+            if should_eval and self.early_stopping.step(val_loss, val_metrics, self.current_step):
+                print(f"\n{'='*80}")
+                print(f"Early stopping triggered at step {self.current_step}")
+                print(f"{'='*80}")
                 break
             
             # Update learning rate
             self.lr_scheduler.step()
         
-        print(f"\nTraining completed. Best step: {self.early_stopping.get_best_step()}")
-        print(f"Best val loss: {self.early_stopping.get_best_loss():.4f}")
+        print(f"\n{'='*80}")
+        print(f"Training Completed")
+        print(f"  Best step: {self.early_stopping.get_best_step()}")
+        print(f"  Best val loss: {self.early_stopping.get_best_loss():.4f}")
+        print(f"{'='*80}")
         
         return best_prompt
     

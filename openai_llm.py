@@ -2,12 +2,14 @@
 OpenAI LLM Integration: Wrapper for OpenAI API calls.
 
 Provides LLM functions for Judge, Gradient Agent, and Optimizer using OpenAI API.
+Supports concurrent API calls for efficiency.
 """
 
 import os
 import json
 import re
 from typing import Optional, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 
 
 class OpenAILLM:
