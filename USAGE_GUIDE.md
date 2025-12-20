@@ -154,7 +154,7 @@ initial_prompt = JudgePrompt(
         "Scale": "Use a scale from 1 to 10.",
         "Output Format": "Output only the numeric score."
     },
-    editable_sections=["Scoring Criteria"]
+    meta_sections=["Scale", "Output Format"]  # These cannot be modified
 )
 
 # 3. Load dataset

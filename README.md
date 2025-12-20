@@ -122,9 +122,9 @@ export DATASET_PATH='/path/to/your/dataset.jsonl'
 
 创建 JSON 格式的 JudgePrompt 文件（详细格式说明见 [JUDGE_PROMPT_FORMAT.md](JUDGE_PROMPT_FORMAT.md)）。
 
-**重要**：sections 数量不限，可以包含任意多个。在优化过程中，当学习率较高时，框架会自动添加或删除 sections。
+**重要**：sections 数量不限，可以包含任意多个。使用 `meta_sections` 指定不可修改的sections，其他所有sections自动可编辑。在优化过程中，当学习率较高时，框架会自动添加或删除editable sections。
 
-示例（3个sections）：
+示例（3个sections，2个meta）：
 
 ```json
 {
@@ -133,11 +133,14 @@ export DATASET_PATH='/path/to/your/dataset.jsonl'
     "Scale": "使用 1 到 10 的评分标准，其中 1 表示差，10 表示优秀。",
     "Output Format": "仅输出数字分数，不要输出其他内容。"
   },
-  "editable_sections": [
-    "Scoring Criteria"
+  "meta_sections": [
+    "Scale",
+    "Output Format"
   ]
 }
 ```
+
+说明：`Scoring Criteria` 是editable（可修改/删除），`Scale` 和 `Output Format` 是meta（永不可修改/删除）
 
 你也可以包含更多sections（例如6个或更多）：
 
@@ -151,9 +154,11 @@ export DATASET_PATH='/path/to/your/dataset.jsonl'
     "Scale": "...",
     "Output Format": "..."
   },
-  "editable_sections": ["Scoring Criteria", "Anti-Bias", "Positive Indicators", "Negative Indicators"]
+  "meta_sections": ["Scale", "Output Format"]
 }
 ```
+
+说明：前4个sections都是editable，后2个是meta
 
 或使用 Python 代码创建：
 
@@ -167,7 +172,7 @@ prompt = JudgePrompt(
         "Output Format": "仅输出数字分数",
         # 可以添加任意多个sections
     },
-    editable_sections=["Scoring Criteria"]
+    meta_sections=["Scale", "Output Format"]  # 这些不可修改
 )
 prompt.save("initial_judge_prompt.json")
 ```
