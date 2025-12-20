@@ -7,7 +7,7 @@ with support for self-consistency variance estimation and concurrent LLM calls.
 
 from typing import List, Dict, Callable, Optional
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 
 class ForwardPass:

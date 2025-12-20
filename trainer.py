@@ -342,7 +342,7 @@ class SGDPromptTrainer:
                 print(f"  Step Train Loss: {step_info['train_loss']:.4f} "
                       f"(MAE: {step_info['mae']:.4f}, Rank: {step_info['rank_loss']:.4f})")
                 
-                if should_eval:
+                if should_eval and val_loss is not None:
                     print(f"  Full Train Loss: {train_loss:.4f} (MAE: {train_metrics['mae']:.4f}, "
                           f"Rank: {train_metrics['rank_loss_component']:.4f})")
                     print(f"  Val Loss: {val_loss:.4f} (MAE: {val_metrics['mae']:.4f}, "
@@ -354,8 +354,8 @@ class SGDPromptTrainer:
                     print(f"  ✗ No valid modification applied")
                 print(f"{'='*80}")
             
-            # Save checkpoint (only when modification is valid)
-            if self.version_control and step_info['modification_valid'] and should_eval:
+            # Save checkpoint (only when modification is valid and evaluation is performed)
+            if self.version_control and step_info['modification_valid'] and should_eval and val_loss is not None:
                 self.current_prompt.save(self.version_control.prompt_path)
                 self.version_control.commit_prompt_update(
                     self.current_step,
@@ -366,15 +366,15 @@ class SGDPromptTrainer:
                     step_info.get('modification_rationale', '')
                 )
             
-            # Update best prompt (only on evaluation steps)
-            if should_eval and val_loss <= best_val_loss:
+            # Update best prompt (only on evaluation steps when val_loss is available)
+            if should_eval and val_loss is not None and val_loss <= best_val_loss:
                 best_val_loss = val_loss
                 best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
                 if self.version_control:
                     self.version_control.create_checkpoint_tag(self.current_step, is_best=True)
             
-            # Check early stopping (only on evaluation steps)
-            if should_eval and self.early_stopping.step(val_loss, val_metrics, self.current_step):
+            # Check early stopping (only on evaluation steps when val_loss is available)
+            if should_eval and val_loss is not None and self.early_stopping.step(val_loss, val_metrics, self.current_step):
                 print(f"\n{'='*80}")
                 print(f"Early stopping triggered at step {self.current_step}")
                 print(f"{'='*80}")
