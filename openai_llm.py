@@ -134,7 +134,7 @@ Please provide your score:"""
         Extract numeric score from LLM response using regex.
         
         Supports various formats:
-        - "Score: 8.5" or "score: 8.5"
+        - "Score: 8.5" or "score: 8.5" or "Score:8.5" (with/without space)
         - "分数: 8.5" or "分数：8.5" (Chinese)
         - "Rating: 8.5"
         - Plain number: "8.5"
@@ -147,9 +147,9 @@ Please provide your score:"""
         """
         # Try patterns in order of specificity
         patterns = [
-            r'(?:score|Score|SCORE)[\s:：]+([0-9]+\.?[0-9]*)',  # English "score"
-            r'(?:分数|評分)[\s:：]+([0-9]+\.?[0-9]*)',  # Chinese "分数" or "評分"
-            r'(?:rating|Rating|RATING)[\s:：]+([0-9]+\.?[0-9]*)',  # "rating"
+            r'(?:score|Score|SCORE)[\s:：]*([0-9]+\.?[0-9]*)',  # English "score" (optional separator)
+            r'(?:分数|評分)[\s:：]*([0-9]+\.?[0-9]*)',  # Chinese "分数" or "評分"
+            r'(?:rating|Rating|RATING)[\s:：]*([0-9]+\.?[0-9]*)',  # "rating"
             r'^([0-9]+\.?[0-9]*)$',  # Just a number on its own line
             r'([0-9]+\.?[0-9]*)',  # Any number (last resort)
         ]
