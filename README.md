@@ -120,7 +120,11 @@ export DATASET_PATH='/path/to/your/dataset.jsonl'
 
 ### 2. 准备初始JudgePrompt
 
-创建 JSON 格式的 JudgePrompt 文件（详细格式说明见 [JUDGE_PROMPT_FORMAT.md](JUDGE_PROMPT_FORMAT.md)）：
+创建 JSON 格式的 JudgePrompt 文件（详细格式说明见 [JUDGE_PROMPT_FORMAT.md](JUDGE_PROMPT_FORMAT.md)）。
+
+**重要**：sections 数量不限，可以包含任意多个。在优化过程中，当学习率较高时，框架会自动添加或删除 sections。
+
+示例（3个sections）：
 
 ```json
 {
@@ -135,6 +139,22 @@ export DATASET_PATH='/path/to/your/dataset.jsonl'
 }
 ```
 
+你也可以包含更多sections（例如6个或更多）：
+
+```json
+{
+  "sections": {
+    "Scoring Criteria": "...",
+    "Anti-Bias": "...",
+    "Positive Indicators": "...",
+    "Negative Indicators": "...",
+    "Scale": "...",
+    "Output Format": "..."
+  },
+  "editable_sections": ["Scoring Criteria", "Anti-Bias", "Positive Indicators", "Negative Indicators"]
+}
+```
+
 或使用 Python 代码创建：
 
 ```python
@@ -144,7 +164,8 @@ prompt = JudgePrompt(
     sections={
         "Scoring Criteria": "你的评分标准...",
         "Scale": "使用 1-10 评分标准",
-        "Output Format": "仅输出数字分数"
+        "Output Format": "仅输出数字分数",
+        # 可以添加任意多个sections
     },
     editable_sections=["Scoring Criteria"]
 )

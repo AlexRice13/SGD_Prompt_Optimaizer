@@ -4,6 +4,8 @@
 
 JudgePrompt 是框架中用于评分的提示词模板。它可以从 JSON 文件中加载，也可以保存为 JSON 文件。这样可以方便地在不同的优化会话之间重用和共享提示词配置。
 
+**重要**: JudgePrompt 支持**任意数量**的 sections。在优化过程中，当学习率较高时，SGD Agent 可以**动态添加或删除** sections。
+
 ## JSON 文件格式
 
 JudgePrompt 的 JSON 文件格式如下：
@@ -11,12 +13,14 @@ JudgePrompt 的 JSON 文件格式如下：
 ```json
 {
   "sections": {
-    "Scoring Criteria": "评分标准的具体内容...",
-    "Scale": "评分量表的说明...",
-    "Output Format": "输出格式要求..."
+    "Section Name 1": "内容...",
+    "Section Name 2": "内容...",
+    "Section Name 3": "内容...",
+    "...可以有任意多个sections..."
   },
   "editable_sections": [
-    "Scoring Criteria"
+    "Section Name 1",
+    "...列出可编辑的section名称..."
   ]
 }
 ```
@@ -29,34 +33,42 @@ JudgePrompt 的 JSON 文件格式如下：
 
 - **类型**: 对象/字典
 - **必需**: 是
+- **数量限制**: **无限制**，可以包含任意数量的 sections
 - **示例**:
   ```json
   "sections": {
     "Scoring Criteria": "根据完整性、清晰度和准确性评估响应。",
+    "Anti-Bias": "避免长度偏见。",
     "Scale": "使用 1 到 10 的评分标准，其中 1 表示差，10 表示优秀。",
-    "Output Format": "仅输出数字分数，不要输出其他内容。"
+    "Output Format": "仅输出数字分数，不要输出其他内容。",
+    "Examples": "优秀回答示例：...",
+    "Special Instructions": "额外的评分指导..."
   }
   ```
 
-**常用的 section 名称**：
+**常用的 section 名称**（仅供参考，可以自定义）：
 - `Scoring Criteria`: 评分标准
+- `Anti-Bias`: 反偏见指导
 - `Scale`: 评分量表
 - `Output Format`: 输出格式要求
-- `Anti-Bias`: 反偏见指导
-- `Examples`: 示例（可选）
-
-你可以根据需要定义自己的 section 名称和内容。
+- `Examples`: 示例
+- `Special Instructions`: 特殊指导
+- 你可以根据需要定义**任何** section 名称和内容
 
 #### 2. `editable_sections` (必需)
 
-一个数组，列出在优化过程中可以被修改的 section 名称。
+一个数组，列出在优化**初始阶段**可以被修改的 section 名称。
 
 - **类型**: 数组
 - **必需**: 是
+- **动态性**: 在优化过程中，当学习率较高时（LR ≥ τ），优化器可以：
+  - **添加新的 sections**（不在原始JSON中的）
+  - **删除现有的 sections**
+  - 修改 editable_sections 列表
 - **说明**: 
   - 列出的 section 名称必须存在于 `sections` 中
-  - 未列出的 section 将被视为"冻结"，在优化过程中不会被修改
-  - 通常只将核心评分标准设为可编辑，而保持量表和输出格式固定
+  - 未列出的 section 在**低学习率阶段**被视为"冻结"，不会被修改
+  - 在**高学习率阶段**（LR ≥ τ），优化器可以添加新 section 或删除现有 section
 - **示例**:
   ```json
   "editable_sections": [
@@ -65,9 +77,40 @@ JudgePrompt 的 JSON 文件格式如下：
   ]
   ```
 
+## 动态Section管理
+
+根据 object.md 设计，优化器的权限与学习率绑定：
+
+### 低学习率阶段（LR < τ）
+- **只能**修改现有 editable sections 的内容
+- **不能**添加或删除 sections
+- **不能**重排 sections
+
+### 高学习率阶段（LR ≥ τ）
+- **可以**修改 editable sections 的内容
+- **可以**添加新的 sections
+- **可以**删除现有的 sections
+- **可以**重排 sections 顺序
+
+这种设计允许：
+- 早期（高LR）：进行结构性探索，添加或删除评分维度
+- 后期（低LR）：进行精细调整，优化现有内容的措辞
+
 ## 完整示例
 
-### 示例 1: 基础配置
+### 示例 1: 最小配置（2个sections）
+
+```json
+{
+  "sections": {
+    "Criteria": "评估质量",
+    "Output": "输出分数"
+  },
+  "editable_sections": ["Criteria"]
+}
+```
+
+### 示例 2: 标准配置（3-4个sections）
 
 ```json
 {
@@ -82,24 +125,28 @@ JudgePrompt 的 JSON 文件格式如下：
 }
 ```
 
-### 示例 2: 完整配置（包含反偏见）
+### 示例 3: 丰富配置（6个sections）
 
 ```json
 {
   "sections": {
-    "Scoring Criteria": "根据以下维度评估响应：\n1. 准确性：信息是否正确\n2. 完整性：是否全面回答了问题\n3. 清晰度：表达是否清晰易懂",
+    "Scoring Criteria": "根据以下维度评估响应：\n1. 准确性：信息是否正确\n2. 完整性：是否全面回答了问题\n3. 清晰度：表达是否清晰易懂\n4. 相关性：是否紧扣主题",
     "Anti-Bias": "避免基于响应长度进行评分。简洁但准确的回答应该获得高分。",
+    "Positive Indicators": "优质回答的特征：\n- 逻辑清晰\n- 证据充分\n- 表达专业",
+    "Negative Indicators": "低质回答的特征：\n- 信息错误\n- 逻辑混乱\n- 答非所问",
     "Scale": "使用 1-10 评分标准：\n- 1-3: 差\n- 4-6: 中等\n- 7-8: 良好\n- 9-10: 优秀",
     "Output Format": "仅输出数字分数（1-10 之间的整数或小数），不要输出其他说明。"
   },
   "editable_sections": [
     "Scoring Criteria",
-    "Anti-Bias"
+    "Anti-Bias",
+    "Positive Indicators",
+    "Negative Indicators"
   ]
 }
 ```
 
-### 示例 3: 多语言支持
+### 示例 4: 多语言支持（双语sections）
 
 ```json
 {
@@ -198,12 +245,42 @@ python example_usage.py
 - **可控优化**：只优化需要调整的部分（通过 `editable_sections` 控制）
 - **结构稳定**：保持固定的框架（如输出格式），只优化评分标准
 
-### 2. 可编辑性控制
+### 2. 可编辑性控制与动态Section管理
 
-通过 `editable_sections` 控制哪些部分可以被优化：
-- **推荐做法**：只将核心评分标准设为可编辑
-- **固定部分**：评分量表、输出格式通常应保持不变
-- **分阶段优化**：可以在不同阶段调整不同的 section
+**初始配置**：通过 `editable_sections` 指定初始可编辑的部分。
+
+**动态调整**：在优化过程中，根据学习率：
+- **低学习率阶段（LR < τ）**：
+  - 只修改 editable_sections 中列出的 section 内容
+  - 不能添加或删除 sections
+  - 保持结构稳定，精细调优
+  
+- **高学习率阶段（LR ≥ τ）**：
+  - 可以修改 editable_sections 的内容
+  - **可以动态添加新的 sections**（即使不在原始JSON中）
+  - **可以删除现有的 sections**
+  - 可以重排 sections 顺序
+  - 进行结构性探索
+
+**示例**：假设你的初始JSON只有3个sections：
+```json
+{
+  "sections": {
+    "Scoring Criteria": "...",
+    "Scale": "...",
+    "Output Format": "..."
+  },
+  "editable_sections": ["Scoring Criteria"]
+}
+```
+
+在高LR阶段，优化器可能会：
+- 添加 "Anti-Bias" section
+- 添加 "Examples" section
+- 删除某个不太有用的 section
+- 结果可能变成5个或更多sections
+
+在低LR阶段，只会精细调整现有的可编辑sections内容。
 
 ### 3. 内容编写建议
 
@@ -222,15 +299,27 @@ python example_usage.py
 
 JSON 对象在 Python 3.7+ 中保持插入顺序。组装完整提示词时，section 会按照字典中的顺序排列。建议按照逻辑顺序排列（如：标准 → 量表 → 格式）。
 
-### Q3: 可以只有一个 section 吗？
+### Q3: Section数量有限制吗？
 
-理论上可以，但不推荐。建议至少分为"评分标准"和"输出格式"两个部分，这样可以保持输出格式稳定。
+**没有限制**！你可以在初始JSON中包含任意数量的sections（从1个到几十个都可以）。在优化过程中，当学习率较高时，优化器还可以动态添加或删除sections。
 
-### Q4: editable_sections 可以为空吗？
+框架支持的是**动态section管理**，不限制数量。
+
+### Q4: 初始JSON只有3个sections，优化后会不会增加？
+
+**会的**！在高学习率阶段，优化器可以根据需要添加新的sections（例如 Anti-Bias、Examples、Special Instructions等），也可以删除不必要的sections。
+
+最终优化后的prompt可能有5个、10个甚至更多sections，完全取决于优化过程的需要。
+
+### Q5: editable_sections 可以为空吗？
 
 可以，但这样的话提示词在优化过程中不会被修改。这种配置只适合测试或评估现有提示词的场景。
 
-### Q5: 如何验证 JSON 文件格式正确？
+### Q5: editable_sections 可以为空吗？
+
+可以，但这样的话提示词在**低学习率阶段**不会被修改。在**高学习率阶段**仍然可以添加新sections。这种配置适合测试或评估现有提示词的场景。
+
+### Q6: 如何验证 JSON 文件格式正确？
 
 ```python
 from judge_prompt import JudgePrompt
