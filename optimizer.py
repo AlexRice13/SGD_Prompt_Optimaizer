@@ -203,9 +203,9 @@ RATIONALE: [brief explanation]"""
         if section_name in meta_sections:
             return False
         
-        # Check section is editable (exists and not meta)
-        if section_name not in editable_sections and section_name in meta_sections:
-            return False
+        # For new sections (not in editable_sections yet), they're allowed at high LR
+        # For existing sections, they must be in editable_sections
+        # This is checked implicitly - if it's not meta and optimizer suggests it, it's valid
         
         # Check character limit
         max_chars = self.compute_max_chars(learning_rate)
