@@ -14,8 +14,10 @@ class PromptOptimizer:
     Optimizer that generates prompt modification suggestions.
     
     Permissions are bound to learning rate:
-    - Low LR: Only modify existing editable sections
-    - High LR: Can add/remove editable sections and restructure
+    - Low LR: Only modify content of existing editable sections via git patch
+    - High LR: Can add or remove editable sections (but never modify/remove meta_sections)
+    
+    Note: meta_sections can NEVER be modified or deleted at any LR stage.
     """
     
     def __init__(self, llm_fn: Callable[[str], str], 
@@ -43,10 +45,10 @@ class PromptOptimizer:
         is_high_lr = learning_rate >= self.lr_threshold
         
         return {
-            'modify_content': True,  # Always allowed
-            'add_sections': is_high_lr,
-            'remove_sections': is_high_lr,
-            'reorder_sections': is_high_lr,
+            'modify_content': True,  # Always allowed for editable sections
+            'add_sections': is_high_lr,  # Can add new editable sections
+            'remove_sections': is_high_lr,  # Can remove editable sections
+            'reorder_sections': False,  # Not currently supported
         }
     
     def compute_max_chars(self, learning_rate: float, base_limit: int = 100) -> int:
@@ -67,7 +69,8 @@ class PromptOptimizer:
                                         current_prompt: str,
                                         proxy_gradient: str,
                                         learning_rate: float,
-                                        editable_sections: List[str]) -> str:
+                                        editable_sections: List[str],
+                                        meta_sections: List[str]) -> str:
         """
         Generate prompt modification suggestion.
         
@@ -76,6 +79,7 @@ class PromptOptimizer:
             proxy_gradient: Proxy gradient from GradientAgent
             learning_rate: Current learning rate
             editable_sections: List of sections that can be modified
+            meta_sections: List of sections that cannot be modified or deleted
             
         Returns:
             Modification suggestion as text
@@ -95,17 +99,19 @@ Optimization Constraints:
 - Learning Rate: {learning_rate:.4f}
 - Maximum character changes: {max_chars}
 - Editable sections: {', '.join(editable_sections)}
+- Meta sections (CANNOT modify or delete): {', '.join(meta_sections)}
 
 Permissions:
 - Modify content in editable sections: {permissions['modify_content']}
 - Add new sections: {permissions['add_sections']}
-- Remove sections: {permissions['remove_sections']}
-- Reorder sections: {permissions['reorder_sections']}
+- Remove editable sections: {permissions['remove_sections']}
 
-Additional Constraints:
+Important Rules:
+- Meta sections ({', '.join(meta_sections)}) can NEVER be modified or deleted
+- At low LR: Only modify content of existing editable sections within character limit
+- At high LR: Can also add new sections or remove existing editable sections
+- All modifications must be via git patch format
 - Do NOT change the overall scoring objective
-- Do NOT introduce evaluation dimensions unrelated to existing goals
-- Maintain semantic consistency with the original prompt intent
 
 Task: Generate a specific modification suggestion in unified diff format.
 Focus on changes that address the issues identified in the proxy gradient.
@@ -177,7 +183,8 @@ RATIONALE: [brief explanation]"""
     
     def validate_modification(self, modification: Dict[str, str],
                             learning_rate: float,
-                            editable_sections: List[str]) -> bool:
+                            editable_sections: List[str],
+                            meta_sections: List[str]) -> bool:
         """
         Validate that modification respects constraints.
         
@@ -185,12 +192,19 @@ RATIONALE: [brief explanation]"""
             modification: Parsed modification dictionary
             learning_rate: Current learning rate
             editable_sections: List of editable sections
+            meta_sections: List of meta sections that cannot be modified
             
         Returns:
             True if modification is valid
         """
-        # Check section is editable
-        if modification['section'] not in editable_sections:
+        section_name = modification['section']
+        
+        # Check section is not a meta section
+        if section_name in meta_sections:
+            return False
+        
+        # Check section is editable (exists and not meta)
+        if section_name not in editable_sections and section_name in meta_sections:
             return False
         
         # Check character limit

@@ -215,12 +215,17 @@ class SGDPromptTrainer:
         # Get learning rate
         lr = self.lr_scheduler.get_current_lr()
         
+        # Get editable and meta sections
+        editable_sections = list(self.current_prompt.get_editable_sections())
+        meta_sections = list(self.current_prompt.meta_sections)
+        
         # Generate modification suggestion
         modification_suggestion = self.optimizer.generate_modification_suggestion(
             prompt_text,
             gradient_result['proxy_gradient'],
             lr,
-            list(self.current_prompt.editable_sections)
+            editable_sections,
+            meta_sections
         )
         
         # Parse and validate modification
@@ -237,7 +242,7 @@ class SGDPromptTrainer:
         }
         
         if modification and self.optimizer.validate_modification(
-            modification, lr, list(self.current_prompt.editable_sections)
+            modification, lr, editable_sections, meta_sections
         ):
             # Apply modification
             success = self.current_prompt.update_section(

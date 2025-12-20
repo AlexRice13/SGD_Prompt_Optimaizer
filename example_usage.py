@@ -106,9 +106,11 @@ def create_example_prompt() -> JudgePrompt:
         "Output Format": "Output only the numeric score, nothing else."
     }
     
-    editable_sections = ["Scoring Criteria"]
+    # Scale and Output Format are meta sections (frozen, cannot be modified)
+    # Scoring Criteria is editable
+    meta_sections = ["Scale", "Output Format"]
     
-    return JudgePrompt(sections, editable_sections)
+    return JudgePrompt(sections, meta_sections)
 
 
 def create_example_prompt_file(output_path: str = "initial_judge_prompt.json") -> str:
@@ -122,7 +124,7 @@ def create_example_prompt_file(output_path: str = "initial_judge_prompt.json") -
             "Scale": "...",
             "Output Format": "..."
         },
-        "editable_sections": ["Scoring Criteria"]
+        "meta_sections": ["Scale", "Output Format"]
     }
     
     Args:
@@ -157,7 +159,8 @@ def load_prompt_from_file(filepath: str) -> JudgePrompt:
     print(f"Loading JudgePrompt from {filepath}...")
     prompt = JudgePrompt.load(filepath)
     print(f"Loaded prompt with {len(prompt.sections)} sections")
-    print(f"Editable sections: {', '.join(prompt.editable_sections)}")
+    print(f"Meta sections (frozen): {', '.join(prompt.meta_sections)}")
+    print(f"Editable sections: {', '.join(prompt.get_editable_sections())}")
     return prompt
 
 
@@ -212,7 +215,8 @@ def main():
         print(f"Created and loaded example prompt")
     
     print(f"Prompt has {len(initial_prompt.sections)} sections")
-    print(f"Editable sections: {', '.join(initial_prompt.editable_sections)}")
+    print(f"Meta sections (frozen): {', '.join(initial_prompt.meta_sections)}")
+    print(f"Editable sections: {', '.join(initial_prompt.get_editable_sections())}")
     
     # Load or create dataset
     print("\n2. Loading dataset...")
@@ -311,8 +315,10 @@ def main():
     print("         \"Scale\": \"Use 1-10 scale...\",")
     print("         \"Output Format\": \"Output only the numeric score.\"")
     print("       },")
-    print("       \"editable_sections\": [\"Scoring Criteria\"]")
+    print("       \"meta_sections\": [\"Scale\", \"Output Format\"]")
     print("     }")
+    print("     Note: meta_sections are frozen and cannot be modified.")
+    print("     All other sections are automatically editable.")
     print("  2. Create a JSONL dataset file with format:")
     print("     {\"prompt\": \"...\", \"response\": \"...\", \"score\": 8.5}")
     print("  3. Set environment variables:")
