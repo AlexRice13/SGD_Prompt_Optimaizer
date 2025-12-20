@@ -34,7 +34,13 @@ class PromptOptimizer:
                                              E.g., 0.5 means structural edits only when
                                              current_lr >= 0.5 * initial_lr
             initial_lr: Initial learning rate to compute threshold
+        
+        Raises:
+            ValueError: If initial_lr <= 0
         """
+        if initial_lr <= 0:
+            raise ValueError(f"initial_lr must be positive, got {initial_lr}")
+        
         self.llm_fn = llm_fn
         self.structural_edit_threshold_ratio = structural_edit_threshold_ratio
         self.initial_lr = initial_lr
@@ -66,6 +72,8 @@ class PromptOptimizer:
         
         Character limit scales with (current_lr / initial_lr) ratio,
         so modifications become more constrained as training progresses.
+        Note: LR ratio is clamped to [0, 1] range, so if LR exceeds initial_lr
+        (which can happen in some schedulers), the char limit is capped at base_limit.
         
         Args:
             learning_rate: Current learning rate
@@ -75,7 +83,7 @@ class PromptOptimizer:
             Maximum allowed character changes
         """
         # Scale character limit with LR ratio relative to initial LR
-        lr_ratio = learning_rate / self.initial_lr if self.initial_lr > 0 else 1.0
+        lr_ratio = learning_rate / self.initial_lr
         lr_ratio = max(0.0, min(1.0, lr_ratio))  # Clamp to [0, 1]
         
         return max(10, int(base_limit * lr_ratio))

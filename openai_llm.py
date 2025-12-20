@@ -137,7 +137,7 @@ Please provide your score:"""
         - "Score: 8.5" or "score: 8.5" or "Score:8.5" (with/without space)
         - "分数: 8.5" or "分数：8.5" (Chinese)
         - "Rating: 8.5"
-        - Plain number: "8.5"
+        - Plain number: "8.5" or ".5" (decimal starting with point)
         
         Args:
             text: LLM response text
@@ -145,13 +145,16 @@ Please provide your score:"""
         Returns:
             Extracted score as float
         """
+        # Number pattern that matches integers, decimals, and numbers starting with decimal point
+        NUMBER_PATTERN = r'([0-9]*\.?[0-9]+)'
+        
         # Try patterns in order of specificity
         patterns = [
-            r'(?:score|Score|SCORE)[\s:：]*([0-9]+\.?[0-9]*)',  # English "score" (optional separator)
-            r'(?:分数|評分)[\s:：]*([0-9]+\.?[0-9]*)',  # Chinese "分数" or "評分"
-            r'(?:rating|Rating|RATING)[\s:：]*([0-9]+\.?[0-9]*)',  # "rating"
-            r'^([0-9]+\.?[0-9]*)$',  # Just a number on its own line
-            r'([0-9]+\.?[0-9]*)',  # Any number (last resort)
+            r'(?:score|Score|SCORE)[\s:：]*' + NUMBER_PATTERN,  # English "score" (optional separator)
+            r'(?:分数|評分)[\s:：]*' + NUMBER_PATTERN,  # Chinese "分数" or "評分"
+            r'(?:rating|Rating|RATING)[\s:：]*' + NUMBER_PATTERN,  # "rating"
+            r'^' + NUMBER_PATTERN + r'$',  # Just a number on its own line
+            NUMBER_PATTERN,  # Any number (last resort)
         ]
         
         for pattern in patterns:
