@@ -157,6 +157,11 @@ OPTIMIZER_PROMPT_TEMPLATE = """你是一个prompt优化代理。为评分Prompt�
 - 受影响的误差模式: {error_mode}
 - 强度: {magnitude}
 
+当前Section内容：
+Section名称: {section_id}
+当前内容:
+{current_section_content}
+
 修改指导：
 {modification_guidance}
 
@@ -181,7 +186,7 @@ OPTIMIZER_PROMPT_TEMPLATE = """你是一个prompt优化代理。为评分Prompt�
 输出格式（必须严格遵循此格式）：
 SECTION_TO_MODIFY: {section_id}
 OLD_CONTENT:
-[复制section的原始内容，可以留空]
+{current_section_content}
 NEW_CONTENT:
 [写入修改后的完整section内容]
 RATIONALE: [简要说明如何响应压力信号]
