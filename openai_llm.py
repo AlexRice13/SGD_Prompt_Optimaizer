@@ -233,7 +233,7 @@ def create_openai_llm_functions(model: str = "gpt-4",
                                  judge_temperature: float = 0.3,
                                  gradient_temperature: float = 0.7,
                                  optimizer_temperature: float = 0.5,
-                                 max_tokens: int = 16000,
+                                 max_tokens: Optional[int] = None,
                                  api_key: Optional[str] = None,
                                  api_base: Optional[str] = None):
     """
@@ -244,19 +244,23 @@ def create_openai_llm_functions(model: str = "gpt-4",
         judge_temperature: Temperature for judge LLM
         gradient_temperature: Temperature for gradient LLM
         optimizer_temperature: Temperature for optimizer LLM
-        max_tokens: Maximum output tokens (default 16000, will be dynamically adjusted based on input)
+        max_tokens: Maximum output tokens (if None, uses config from trainer; dynamically adjusted based on input)
         api_key: API key (if None, reads from env)
         api_base: API base URL (if None, reads from env)
         
     Returns:
         Tuple of (judge_fn, gradient_fn, optimizer_fn)
     """
+    # Use provided max_tokens or fall back to OpenAILLM's default (2000)
+    # Typically max_tokens should be passed from trainer config
+    actual_max_tokens = max_tokens if max_tokens is not None else 2000
+    
     # Create instances with appropriate temperatures and max_tokens for each role
-    judge_llm = OpenAILLM(model=model, temperature=judge_temperature, max_tokens=max_tokens, 
+    judge_llm = OpenAILLM(model=model, temperature=judge_temperature, max_tokens=actual_max_tokens, 
                          api_key=api_key, api_base=api_base)
-    gradient_llm = OpenAILLM(model=model, temperature=gradient_temperature, max_tokens=max_tokens,
+    gradient_llm = OpenAILLM(model=model, temperature=gradient_temperature, max_tokens=actual_max_tokens,
                             api_key=api_key, api_base=api_base)
-    optimizer_llm = OpenAILLM(model=model, temperature=optimizer_temperature, max_tokens=max_tokens,
+    optimizer_llm = OpenAILLM(model=model, temperature=optimizer_temperature, max_tokens=actual_max_tokens,
                              api_key=api_key, api_base=api_base)
     
     def judge_fn(prompt: str, response: str) -> float:

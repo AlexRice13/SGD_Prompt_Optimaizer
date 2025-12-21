@@ -105,7 +105,8 @@ class SGDPromptTrainer:
             'structural_edit_threshold_ratio': 0.5,  # Ratio above which structural edits allowed
             'base_char_limit': 300,  # Base character limit for modifications at initial LR
             'debug': False,  # Enable full LLM output logging for debugging
-            'max_tokens': 16000,  # Maximum output tokens for LLM (dynamically adjusted based on input)
+            # Note: max_tokens should be set via config or MAX_TOKENS env variable
+            # No hardcoded default here to ensure user configuration is respected
         }
         
         for key, value in defaults.items():
