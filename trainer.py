@@ -218,7 +218,7 @@ class SGDPromptTrainer:
         
         # Compute gradient
         gradient_result = self.gradient_agent.compute_gradient(
-            prompt_text, judge_scores, batch_human_scores
+            prompt_text, judge_scores, batch_human_scores, batch_responses
         )
         
         # Get learning rate

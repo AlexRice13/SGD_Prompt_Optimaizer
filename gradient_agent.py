@@ -125,64 +125,102 @@ class GradientAgent:
         
         return stats
     
-    def construct_proxy_gradient(self, current_prompt: str,
-                                 statistics: Dict[str, any]) -> str:
+    def construct_proxy_gradient_with_samples(self, current_prompt: str,
+                                              statistics: Dict[str, any],
+                                              selected_indices: Dict[str, np.ndarray],
+                                              judge_scores: np.ndarray,
+                                              human_scores: np.ndarray,
+                                              responses: List[str]) -> str:
         """
-        Construct proxy gradient using LLM.
+        Construct proxy gradient using LLM with sample content reference.
         
-        The LLM receives only aggregated statistics and current prompt,
-        not any actual sample content.
+        Provides actual sample content for better context, but requires
+        abstract optimization suggestions without including specific content.
         
         Args:
             current_prompt: Current JudgePrompt text
             statistics: Aggregated statistics from compute_statistics
+            selected_indices: Selected sample indices by category
+            judge_scores: All judge scores
+            human_scores: All human scores
+            responses: All response texts
             
         Returns:
             Proxy gradient as structured text
         """
-        gradient_prompt = f"""You are a meta-optimizer analyzing judge prompt performance.
+        # Build sample content strings
+        def format_samples(indices, category_name):
+            if len(indices) == 0:
+                return f"  （无{category_name}样本）\n"
+            
+            sample_text = ""
+            for i, idx in enumerate(indices[:self.n_samples_per_category], 1):
+                response = responses[idx] if idx < len(responses) else "[缺失]"
+                # Truncate long responses for readability
+                if len(response) > 200:
+                    response = response[:200] + "..."
+                error = judge_scores[idx] - human_scores[idx]
+                sample_text += f"  样本{i}: {response}\n"
+                sample_text += f"    人工评分: {human_scores[idx]:.1f}, AI评分: {judge_scores[idx]:.1f}, 误差: {error:+.1f}\n"
+            return sample_text
+        
+        overestimated_samples = format_samples(selected_indices['overestimated'], "高估")
+        underestimated_samples = format_samples(selected_indices['underestimated'], "低估")
+        well_aligned_samples = format_samples(selected_indices['well_aligned'], "对齐")
+        
+        gradient_prompt = f"""你是一个元优化器，正在分析评分prompt的表现。
 
-Current Judge Prompt:
+当前评分Prompt：
 {current_prompt}
 
-Performance Statistics:
-- Total samples evaluated: {statistics['total_samples']}
-- Overall MAE: {statistics['overall']['mae']:.3f}
-- Mean error (bias): {statistics['overall']['mean_error']:.3f}
-- Std error: {statistics['overall']['std_error']:.3f}
+性能统计：
+- 总评估样本数: {statistics['total_samples']}
+- 整体MAE: {statistics['overall']['mae']:.3f}
+- 平均误差（偏置）: {statistics['overall']['mean_error']:.3f}
+- 误差标准差: {statistics['overall']['std_error']:.3f}
 
-Error Category Analysis:
-1. OVERESTIMATED samples (Judge score too high):
-   - Count: {statistics['overestimated']['count']}
-   - Mean error: +{statistics['overestimated']['mean_error']:.3f}
-   - Max error: +{statistics['overestimated']['max_error']:.3f}
+误差分类分析：
+1. 高估样本（AI评分过高）：
+   - 数量: {statistics['overestimated']['count']}
+   - 平均误差: +{statistics['overestimated']['mean_error']:.3f}
+   - 最大误差: +{statistics['overestimated']['max_error']:.3f}
 
-2. UNDERESTIMATED samples (Judge score too low):
-   - Count: {statistics['underestimated']['count']}
-   - Mean error: {statistics['underestimated']['mean_error']:.3f}
-   - Min error: {statistics['underestimated']['min_error']:.3f}
+2. 低估样本（AI评分过低）：
+   - 数量: {statistics['underestimated']['count']}
+   - 平均误差: {statistics['underestimated']['mean_error']:.3f}
+   - 最小误差: {statistics['underestimated']['min_error']:.3f}
 
-3. WELL-ALIGNED samples (Judge score close to human):
-   - Count: {statistics['well_aligned']['count']}
-   - Mean absolute error: {statistics['well_aligned']['mean_abs_error']:.3f}
+3. 对齐样本（AI评分接近人工）：
+   - 数量: {statistics['well_aligned']['count']}
+   - 平均绝对误差: {statistics['well_aligned']['mean_abs_error']:.3f}
 
-Task: Based on ONLY these aggregated statistics (without knowing specific sample content):
-1. Identify abstract patterns in the prompt that might cause overestimation
-2. Identify abstract patterns that might cause underestimation
-3. Suggest the direction of improvement for the prompt
+参考样本（用于理解误差模式，但不要在建议中引用具体内容）：
 
-Output a structured analysis with:
-- OVERESTIMATION_CAUSES: Abstract reasoning about why scores might be too high
-- UNDERESTIMATION_CAUSES: Abstract reasoning about why scores might be too low
-- IMPROVEMENT_DIRECTION: High-level guidance for prompt modification
+高估样本（评分过高）：
+{overestimated_samples}
+低估样本（评分过低）：
+{underestimated_samples}
+对齐样本（评分准确）：
+{well_aligned_samples}
 
-Do NOT make assumptions about specific sample content or task domain."""
+任务：基于统计数据和上述样本，提供抽象的优化建议：
+1. 识别prompt中可能导致高估的抽象模式
+2. 识别prompt中可能导致低估的抽象模式
+3. 提出prompt改进的方向性建议
+
+输出结构化分析：
+- 高估原因分析: 为什么某些类型的回答可能被评分过高（抽象分析，不引用具体样本）
+- 低估原因分析: 为什么某些类型的回答可能被评分过低（抽象分析，不引用具体样本）
+- 改进方向: prompt修改的高层次指导方向
+
+重要：你的建议必须是抽象和可泛化的，不要包含上述具体样本的内容。"""
 
         return self.llm_fn(gradient_prompt)
     
     def compute_gradient(self, current_prompt: str,
                         judge_scores: np.ndarray,
-                        human_scores: np.ndarray) -> Dict[str, any]:
+                        human_scores: np.ndarray,
+                        responses: List[str]) -> Dict[str, any]:
         """
         Full gradient computation pipeline.
         
@@ -190,6 +228,7 @@ Do NOT make assumptions about specific sample content or task domain."""
             current_prompt: Current JudgePrompt text
             judge_scores: Scores from Judge LLM
             human_scores: Human reference scores
+            responses: List of response texts for reference
             
         Returns:
             Dictionary containing statistics and proxy gradient
@@ -200,8 +239,11 @@ Do NOT make assumptions about specific sample content or task domain."""
         # Compute aggregated statistics
         statistics = self.compute_statistics(judge_scores, human_scores, selected_indices)
         
-        # Construct proxy gradient
-        proxy_gradient = self.construct_proxy_gradient(current_prompt, statistics)
+        # Construct proxy gradient with sample content
+        proxy_gradient = self.construct_proxy_gradient_with_samples(
+            current_prompt, statistics, selected_indices, 
+            judge_scores, human_scores, responses
+        )
         
         return {
             'statistics': statistics,

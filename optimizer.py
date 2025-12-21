@@ -110,44 +110,44 @@ class PromptOptimizer:
         permissions = self.get_permissions(learning_rate)
         max_chars = self.compute_max_chars(learning_rate)
         
-        optimizer_prompt = f"""You are a prompt optimizer agent. Generate a modification suggestion for the Judge Prompt.
+        optimizer_prompt = f"""你是一个prompt优化代理。为评分Prompt生成修改建议。
 
-Current Judge Prompt:
+当前评分Prompt：
 {current_prompt}
 
-Proxy Gradient (Analysis):
+代理梯度（分析）：
 {proxy_gradient}
 
-Optimization Constraints:
-- Learning Rate: {learning_rate:.4f}
-- Structural Edit Threshold: {self.structural_edit_threshold:.4f}
-- Maximum character changes: {max_chars}
-- Editable sections: {', '.join(editable_sections)}
-- Meta sections (CANNOT modify or delete): {', '.join(meta_sections)}
+优化约束：
+- 学习率: {learning_rate:.4f}
+- 结构编辑阈值: {self.structural_edit_threshold:.4f}
+- 最大字符修改数: {max_chars}
+- 可编辑sections: {', '.join(editable_sections)}
+- 元sections（不可修改或删除）: {', '.join(meta_sections)}
 
-Permissions:
-- Modify content in editable sections: {permissions['modify_content']}
-- Add new sections: {permissions['add_sections']} (only above threshold)
-- Remove editable sections: {permissions['remove_sections']} (only above threshold)
+权限：
+- 修改可编辑sections的内容: {permissions['modify_content']}
+- 添加新sections: {permissions['add_sections']} （仅在高学习率时）
+- 删除可编辑sections: {permissions['remove_sections']} （仅在高学习率时）
 
-Important Rules:
-- Meta sections ({', '.join(meta_sections)}) can NEVER be modified or deleted
-- At low LR: Only modify content of existing editable sections within character limit
-- At high LR: Can also add new sections or remove existing editable sections
-- All modifications must be via git patch format
-- Do NOT change the overall scoring objective
+重要规则：
+- 元sections（{', '.join(meta_sections)}）永远不能被修改或删除
+- 低学习率时：只能在字符限制内修改现有可编辑sections的内容
+- 高学习率时：也可以添加新sections或删除现有可编辑sections
+- 所有修改必须通过git patch格式
+- 不要改变整体评分目标
 
-Task: Generate a specific modification suggestion in unified diff format.
-Focus on changes that address the issues identified in the proxy gradient.
-Keep changes minimal and within the character limit.
+任务：生成统一diff格式的具体修改建议。
+聚焦于解决代理梯度中识别的问题的修改。
+保持修改最小化并在字符限制内。
 
-Output format:
-SECTION_TO_MODIFY: [section name]
+输出格式：
+SECTION_TO_MODIFY: [section名称]
 OLD_CONTENT:
-[original content]
+[原始内容]
 NEW_CONTENT:
-[modified content]
-RATIONALE: [brief explanation]"""
+[修改后内容]
+RATIONALE: [简要说明]"""
 
         return self.llm_fn(optimizer_prompt)
     
