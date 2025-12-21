@@ -7,6 +7,7 @@ based on proxy gradients, with permissions bound to current learning rate.
 
 from typing import Callable, Dict, List, Optional
 import difflib
+import re
 from prompts import OPTIMIZER_PROMPT_TEMPLATE
 
 
@@ -161,6 +162,12 @@ class PromptOptimizer:
         error_mode = primary_pressure.get('affected_error_mode')
         magnitude = primary_pressure.get('magnitude_bucket')
         
+        # Extract current section content
+        current_section_content = self.extract_section_content(current_prompt, section_id)
+        if not current_section_content:
+            print(f"Warning: Could not extract content for section '{section_id}'")
+            current_section_content = "[Section not found in current prompt]"
+        
         # Map pressure to modification guidance
         modification_guidance = self._map_pressure_to_guidance(
             pressure_type, direction, error_mode, magnitude
@@ -170,6 +177,7 @@ class PromptOptimizer:
         optimizer_prompt = OPTIMIZER_PROMPT_TEMPLATE.format(
             current_prompt=current_prompt,
             section_id=section_id,
+            current_section_content=current_section_content,
             pressure_type=pressure_type,
             direction=direction,
             error_mode=error_mode,
@@ -254,6 +262,28 @@ class PromptOptimizer:
         magnitude_hint = magnitude_hints.get(magnitude, '')
         
         return f"{base_guidance}{context}。{magnitude_hint}。"
+    
+    def extract_section_content(self, full_prompt: str, section_id: str) -> str:
+        """
+        Extract the content of a specific section from the full prompt text.
+        
+        Args:
+            full_prompt: Full prompt text with all sections
+            section_id: Name of the section to extract
+            
+        Returns:
+            Content of the section, or empty string if not found
+        """
+        # Pattern to match section header and content until next section or end
+        # Sections are formatted as: ## SectionName\nContent\n
+        # Handle potential variations in whitespace
+        escaped_section = re.escape(section_id)
+        pattern = rf'^\s*## {escaped_section}\s*\n(.*?)(?=^\s*## |\Z)'
+        match = re.search(pattern, full_prompt, re.DOTALL | re.MULTILINE)
+        
+        if match:
+            return match.group(1).strip()
+        return ""
     
     def parse_modification(self, suggestion: str) -> Optional[Dict[str, str]]:
         """
