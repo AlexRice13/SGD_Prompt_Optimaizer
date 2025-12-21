@@ -25,7 +25,8 @@ class PromptOptimizer:
     def __init__(self, llm_fn: Callable[[str], str], 
                  structural_edit_threshold_ratio: float = 0.5,
                  initial_lr: float = 0.1,
-                 base_char_limit: int = 300):
+                 base_char_limit: int = 300,
+                 debug: bool = False):
         """
         Initialize optimizer.
         
@@ -37,6 +38,7 @@ class PromptOptimizer:
                                              current_lr >= 0.5 * initial_lr
             initial_lr: Initial learning rate to compute threshold
             base_char_limit: Base character limit at initial LR (default: 300)
+            debug: Enable full LLM output logging for debugging (default: False)
         
         Raises:
             ValueError: If initial_lr <= 0
@@ -48,6 +50,7 @@ class PromptOptimizer:
         self.structural_edit_threshold_ratio = structural_edit_threshold_ratio
         self.initial_lr = initial_lr
         self.base_char_limit = base_char_limit
+        self.debug = debug
         self.structural_edit_threshold = initial_lr * structural_edit_threshold_ratio
     
     def get_permissions(self, learning_rate: float) -> Dict[str, bool]:
@@ -185,11 +188,20 @@ class PromptOptimizer:
         llm_output = self.llm_fn(optimizer_prompt)
         
         # Log LLM output for debugging
-        print(f"\n=== Optimizer LLM Output ===")
-        print(f"Total length: {len(llm_output)} characters")
-        print(f"First 500 chars:\n{llm_output[:500]}")
-        print(f"Last 500 chars:\n{llm_output[-500:]}")
-        print("=" * 50)
+        if self.debug:
+            # Full output when debug mode is enabled
+            print(f"\n{'='*80}")
+            print(f"=== FULL Optimizer LLM Output (Debug Mode) ===")
+            print(f"Total length: {len(llm_output)} characters")
+            print(f"\n{llm_output}")
+            print(f"{'='*80}\n")
+        else:
+            # Abbreviated output for normal mode
+            print(f"\n=== Optimizer LLM Output ===")
+            print(f"Total length: {len(llm_output)} characters")
+            print(f"First 500 chars:\n{llm_output[:500]}")
+            print(f"Last 500 chars:\n{llm_output[-500:]}")
+            print("=" * 50)
         
         return llm_output
     

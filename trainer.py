@@ -104,6 +104,7 @@ class SGDPromptTrainer:
             'max_workers': 10,   # Max concurrent threads for LLM calls
             'structural_edit_threshold_ratio': 0.5,  # Ratio above which structural edits allowed
             'base_char_limit': 300,  # Base character limit for modifications at initial LR
+            'debug': False,  # Enable full LLM output logging for debugging
         }
         
         for key, value in defaults.items():
@@ -136,7 +137,8 @@ class SGDPromptTrainer:
             self.optimizer_llm_fn,
             structural_edit_threshold_ratio=self.config['structural_edit_threshold_ratio'],
             initial_lr=self.config['initial_lr'],
-            base_char_limit=self.config['base_char_limit']
+            base_char_limit=self.config['base_char_limit'],
+            debug=self.config['debug']
         )
         
         # Learning rate scheduler
