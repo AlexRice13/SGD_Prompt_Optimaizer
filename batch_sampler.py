@@ -93,8 +93,12 @@ class BatchSampler:
         """
         Get indices from a category pool, ensuring no duplicates within epoch.
         
+        Note: This method does not modify the pool parameter. The pool is used
+        read-only to maintain order, while available_indices tracks which samples
+        haven't been seen yet in the current epoch.
+        
         Args:
-            pool: List of indices in this category
+            pool: List of indices in this category (not modified)
             n_needed: Number of indices needed
             available_indices: Set of indices not yet used in this epoch
             
@@ -136,7 +140,7 @@ class BatchSampler:
             return np.arange(n_samples), responses
         
         # Check if we need to start a new epoch
-        if len(self.samples_seen_in_epoch) >= n_samples:
+        if len(self.samples_seen_in_epoch) == n_samples:
             self.current_epoch += 1
             self._reset_epoch()
         
@@ -174,9 +178,12 @@ class BatchSampler:
         
         # If we don't have enough samples from stratified categories,
         # fill with remaining available samples
-        if len(selected_indices) < self.batch_size and len(available_indices) > 0:
+        if len(selected_indices) < self.batch_size:
             remaining_needed = self.batch_size - len(selected_indices)
-            remaining_available = list(available_indices - set(selected_indices))
+            # Get indices that are available but not yet selected
+            selected_set = set(selected_indices)
+            remaining_available = [idx for idx in range(n_samples) 
+                                  if idx in available_indices and idx not in selected_set]
             if remaining_available:
                 # Shuffle and take what we need
                 np.random.shuffle(remaining_available)
