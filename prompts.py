@@ -64,15 +64,15 @@ GRADIENT_AGENT_PROMPT_TEMPLATE = """你是一个元优化器，为评分prompt�
    [
      {{
        "section_id": "section名称",
-       "immutability_ack": false,  // 必须为false（自检）
-       "pressure_type": "constraint_strictness" | "evaluation_threshold" | "preference_weight" | "ambiguity_tolerance",
-       "direction": "increase" | "decrease" | "maintain",
-       "affected_error_mode": "overestimation" | "underestimation" | "variance",
-       "magnitude_bucket": "weak" | "medium" | "strong",
-       "confidence": "low" | "medium" | "high"
-     }},
-     ...
+       "immutability_ack": false,
+       "pressure_type": "constraint_strictness 或 evaluation_threshold 或 preference_weight 或 ambiguity_tolerance",
+       "direction": "increase 或 decrease 或 maintain",
+       "affected_error_mode": "overestimation 或 underestimation 或 variance",
+       "magnitude_bucket": "weak 或 medium 或 strong",
+       "confidence": "low 或 medium 或 high"
+     }}
    ]
+   注：可以包含多个section的压力块
 
 3. acknowledged_action_space (声明理解的动作边界):
    {{
@@ -82,11 +82,11 @@ GRADIENT_AGENT_PROMPT_TEMPLATE = """你是一个元优化器，为评分prompt�
      "allow_token_edit": true
    }}
 
-4. conflicting_pressures (可选，列出冲突的section pairs):
-   [["section_id_A", "section_id_B"], ...]
+4. conflicting_pressures (可选，列出冲突的section pairs，没有则为空数组):
+   []
 
-5. redundancy_groups (可选，列出可能冗余的section groups):
-   [["section_id_X", "section_id_Y"], ...]
+5. redundancy_groups (可选，列出可能冗余的section groups，没有则为空数组):
+   []
 
 === 严格约束 ===
 - 不要输出任何"怎么改""改成什么"的描述性文本
@@ -95,9 +95,39 @@ GRADIENT_AGENT_PROMPT_TEMPLATE = """你是一个元优化器，为评分prompt�
 - 只输出上述JSON结构
 - section_id必须精确匹配可编辑sections列表
 - 所有枚举值必须从上述选项中选择
+- JSON中的布尔值用 true/false (小写，不带引号)
+- JSON中的字符串用双引号，不要用单引号
+- 不要在JSON对象/数组的最后一个元素后加逗号
+
+=== 输出格式示例 ===
+{{
+  "global_signals": {{
+    "bias_direction": "down",
+    "variance_pressure": "stable"
+  }},
+  "section_pressures": [
+    {{
+      "section_id": "评分标准",
+      "immutability_ack": false,
+      "pressure_type": "constraint_strictness",
+      "direction": "increase",
+      "affected_error_mode": "overestimation",
+      "magnitude_bucket": "medium",
+      "confidence": "high"
+    }}
+  ],
+  "acknowledged_action_space": {{
+    "allow_add_section": {can_add_section},
+    "allow_delete_section": {can_delete_section},
+    "allow_sentence_edit": true,
+    "allow_token_edit": true
+  }},
+  "conflicting_pressures": [],
+  "redundancy_groups": []
+}}
 
 基于统计和样本模式，识别每个可编辑section的语义压力方向和强度。
-输出纯JSON，不要markdown代码块标记。"""
+直接输出JSON对象，不要添加任何说明文字或markdown标记。"""
 
 
 # ============================================================================

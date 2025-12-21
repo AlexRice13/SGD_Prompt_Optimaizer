@@ -114,11 +114,21 @@ class PromptOptimizer:
         ack = structured_gradient.get('acknowledged_action_space', {})
         permissions = self.get_permissions(learning_rate)
         
-        # Check consistency
-        if ack.get('allow_add_section') != permissions['add_sections']:
-            print(f"Warning: Gradient action space mismatch on add_sections")
-        if ack.get('allow_delete_section') != permissions['remove_sections']:
-            print(f"Warning: Gradient action space mismatch on remove_sections")
+        # Check consistency - convert to bool for comparison to handle string "true"/"false"
+        def to_bool(val):
+            if isinstance(val, bool):
+                return val
+            if isinstance(val, str):
+                return val.lower() in ('true', '1', 'yes')
+            return bool(val)
+        
+        ack_add = to_bool(ack.get('allow_add_section', False))
+        ack_remove = to_bool(ack.get('allow_delete_section', False))
+        
+        if ack_add != permissions['add_sections']:
+            print(f"Warning: Gradient action space mismatch on add_sections (ack={ack_add}, perm={permissions['add_sections']})")
+        if ack_remove != permissions['remove_sections']:
+            print(f"Warning: Gradient action space mismatch on remove_sections (ack={ack_remove}, perm={permissions['remove_sections']})")
         
         # Extract high-confidence pressures
         section_pressures = structured_gradient.get('section_pressures', [])

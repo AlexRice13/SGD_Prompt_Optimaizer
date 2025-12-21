@@ -270,6 +270,17 @@ class GradientAgent:
         try:
             # Extract JSON from text using regex-based extraction
             json_text = extract_json_from_text(llm_output)
+            
+            # Additional cleaning: fix common JSON issues
+            # Replace Python-style True/False with JSON true/false
+            json_text = json_text.replace(': True', ': true')
+            json_text = json_text.replace(': False', ': false')
+            json_text = json_text.replace(':True', ':true')
+            json_text = json_text.replace(':False', ':false')
+            
+            # Remove trailing commas before closing braces/brackets
+            json_text = re.sub(r',(\s*[}\]])', r'\1', json_text)
+            
             structured_gradient = json.loads(json_text)
             
             # Validate schema
@@ -280,6 +291,7 @@ class GradientAgent:
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Fallback to default structure if parsing fails
             print(f"Warning: Failed to parse structured gradient: {e}")
+            print(f"LLM output preview: {llm_output[:200]}...")
             return self._get_fallback_gradient(editable_sections, statistics)
     
     def _validate_gradient_schema(self, gradient: Dict, editable_sections: List[str]):
