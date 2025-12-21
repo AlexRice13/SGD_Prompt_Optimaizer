@@ -259,19 +259,37 @@ class SGDPromptTrainer:
             'modification_valid': False
         }
         
-        if modification and self.optimizer.validate_modification(
-            modification, lr, editable_sections, meta_sections
-        ):
-            # Apply modification
-            success = self.current_prompt.update_section(
-                modification['section'],
-                modification['new_content']
-            )
+        if modification:
+            print(f"\n=== Modification Validation ===")
+            print(f"Target section: {modification['section']}")
+            print(f"Is editable: {modification['section'] in editable_sections}")
+            print(f"Is meta: {modification['section'] in meta_sections}")
             
-            if success:
-                step_info['modification_valid'] = True
-                step_info['modified_section'] = modification['section']
-                step_info['modification_rationale'] = modification.get('rationale', '')
+            is_valid = self.optimizer.validate_modification(
+                modification, lr, editable_sections, meta_sections
+            )
+            print(f"Validation result: {is_valid}")
+            
+            if is_valid:
+                # Apply modification
+                print(f"Attempting to update section: {modification['section']}")
+                success = self.current_prompt.update_section(
+                    modification['section'],
+                    modification['new_content']
+                )
+                print(f"Update success: {success}")
+                
+                if success:
+                    step_info['modification_valid'] = True
+                    step_info['modified_section'] = modification['section']
+                    step_info['modification_rationale'] = modification.get('rationale', '')
+                    print(f"✓ Successfully modified section: {modification['section']}")
+                else:
+                    print(f"✗ Failed to update section (might be meta): {modification['section']}")
+            else:
+                print(f"✗ Modification validation failed")
+        else:
+            print("✗ Failed to parse modification from LLM output")
         
         return step_info
     

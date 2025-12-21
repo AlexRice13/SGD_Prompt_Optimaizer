@@ -178,13 +178,19 @@ OPTIMIZER_PROMPT_TEMPLATE = """你是一个prompt优化代理。为评分Prompt�
 - 所有修改必须通过git patch格式
 - 保持修改在字符限制内
 
-输出格式：
+输出格式（必须严格遵循此格式）：
 SECTION_TO_MODIFY: {section_id}
 OLD_CONTENT:
-[原始内容]
+[复制section的原始内容，可以留空]
 NEW_CONTENT:
-[修改后内容]
-RATIONALE: [简要说明如何响应压力信号]"""
+[写入修改后的完整section内容]
+RATIONALE: [简要说明如何响应压力信号]
+
+注意：
+1. NEW_CONTENT必须包含section的完整新内容，不是增量修改
+2. 不要添加markdown代码块标记或其他格式
+3. 每个字段标签后必须换行
+4. 直接输出上述格式，不要添加任何说明文字"""
 
 
 # ============================================================================

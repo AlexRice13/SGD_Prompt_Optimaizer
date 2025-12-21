@@ -182,7 +182,14 @@ class PromptOptimizer:
             meta_sections_list=', '.join(meta_sections)
         )
 
-        return self.llm_fn(optimizer_prompt)
+        llm_output = self.llm_fn(optimizer_prompt)
+        
+        # Log LLM output for debugging
+        print(f"\n=== Optimizer LLM Output (first 500 chars) ===")
+        print(llm_output[:500])
+        print("=" * 50)
+        
+        return llm_output
     
     def _map_pressure_to_guidance(self, pressure_type: str, direction: str,
                                   error_mode: str, magnitude: str) -> str:
@@ -245,6 +252,16 @@ class PromptOptimizer:
             Dictionary with 'section', 'old_content', 'new_content', 'rationale'
             or None if parsing fails
         """
+        if not suggestion or suggestion.strip() == "NO_MODIFICATION":
+            print("Parse: No modification suggested")
+            return None
+        
+        # Try to extract from markdown code blocks first
+        import re
+        code_block_match = re.search(r'```(?:text)?\s*\n(.*?)\n```', suggestion, re.DOTALL)
+        if code_block_match:
+            suggestion = code_block_match.group(1)
+        
         lines = suggestion.strip().split('\n')
         
         result = {
@@ -258,32 +275,56 @@ class PromptOptimizer:
         content_buffer = []
         
         for line in lines:
-            if line.startswith('SECTION_TO_MODIFY:'):
-                result['section'] = line.split(':', 1)[1].strip()
-            elif line.startswith('OLD_CONTENT:'):
+            # Case-insensitive and flexible matching
+            line_upper = line.strip().upper()
+            
+            if line_upper.startswith('SECTION_TO_MODIFY:') or line_upper.startswith('SECTION:'):
+                if ':' in line:
+                    result['section'] = line.split(':', 1)[1].strip()
+            elif line_upper.startswith('OLD_CONTENT:') or line_upper.startswith('OLD:'):
                 if current_field and content_buffer:
-                    result[current_field] = '\n'.join(content_buffer)
+                    result[current_field] = '\n'.join(content_buffer).strip()
                 current_field = 'old_content'
                 content_buffer = []
-            elif line.startswith('NEW_CONTENT:'):
+                # Check if content is on same line
+                if ':' in line and len(line.split(':', 1)[1].strip()) > 0:
+                    content_buffer.append(line.split(':', 1)[1].strip())
+            elif line_upper.startswith('NEW_CONTENT:') or line_upper.startswith('NEW:'):
                 if current_field and content_buffer:
-                    result[current_field] = '\n'.join(content_buffer)
+                    result[current_field] = '\n'.join(content_buffer).strip()
                 current_field = 'new_content'
                 content_buffer = []
-            elif line.startswith('RATIONALE:'):
+                # Check if content is on same line
+                if ':' in line and len(line.split(':', 1)[1].strip()) > 0:
+                    content_buffer.append(line.split(':', 1)[1].strip())
+            elif line_upper.startswith('RATIONALE:') or line_upper.startswith('REASON:'):
                 if current_field and content_buffer:
-                    result[current_field] = '\n'.join(content_buffer)
-                result['rationale'] = line.split(':', 1)[1].strip()
+                    result[current_field] = '\n'.join(content_buffer).strip()
+                if ':' in line:
+                    result['rationale'] = line.split(':', 1)[1].strip()
                 current_field = None
             elif current_field:
                 content_buffer.append(line)
         
         # Capture any remaining content
         if current_field and content_buffer:
-            result[current_field] = '\n'.join(content_buffer)
+            result[current_field] = '\n'.join(content_buffer).strip()
         
-        # Validate
-        if not result['section'] or not result['new_content']:
+        # Debug output
+        print(f"\n=== Parse Result ===")
+        print(f"Section: '{result['section']}'")
+        print(f"Old content length: {len(result['old_content'])}")
+        print(f"New content length: {len(result['new_content'])}")
+        print(f"New content preview: {result['new_content'][:100]}...")
+        print(f"Rationale: '{result['rationale']}'")
+        print("=" * 50)
+        
+        # Validate - only need section and new_content
+        if not result['section']:
+            print("Parse failed: No section specified")
+            return None
+        if not result['new_content']:
+            print("Parse failed: No new content provided")
             return None
         
         return result
