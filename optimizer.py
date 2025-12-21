@@ -185,8 +185,10 @@ class PromptOptimizer:
         llm_output = self.llm_fn(optimizer_prompt)
         
         # Log LLM output for debugging
-        print(f"\n=== Optimizer LLM Output (first 500 chars) ===")
-        print(llm_output[:500])
+        print(f"\n=== Optimizer LLM Output ===")
+        print(f"Total length: {len(llm_output)} characters")
+        print(f"First 500 chars:\n{llm_output[:500]}")
+        print(f"Last 500 chars:\n{llm_output[-500:]}")
         print("=" * 50)
         
         return llm_output
@@ -245,6 +247,8 @@ class PromptOptimizer:
         """
         Parse modification suggestion into structured format.
         
+        Uses regex for robust field extraction to handle large content blocks.
+        
         Args:
             suggestion: Text suggestion from LLM
             
@@ -256,13 +260,12 @@ class PromptOptimizer:
             print("Parse: No modification suggested")
             return None
         
-        # Try to extract from markdown code blocks first
         import re
+        
+        # Try to extract from markdown code blocks first
         code_block_match = re.search(r'```(?:text)?\s*\n(.*?)\n```', suggestion, re.DOTALL)
         if code_block_match:
             suggestion = code_block_match.group(1)
-        
-        lines = suggestion.strip().split('\n')
         
         result = {
             'section': '',
@@ -271,51 +274,43 @@ class PromptOptimizer:
             'rationale': ''
         }
         
-        current_field = None
-        content_buffer = []
+        # Extract section name (case-insensitive)
+        section_match = re.search(r'(?:SECTION_TO_MODIFY|SECTION):\s*(.+?)(?:\n|$)', suggestion, re.IGNORECASE)
+        if section_match:
+            result['section'] = section_match.group(1).strip()
         
-        for line in lines:
-            # Case-insensitive and flexible matching
-            line_upper = line.strip().upper()
-            
-            if line_upper.startswith('SECTION_TO_MODIFY:') or line_upper.startswith('SECTION:'):
-                if ':' in line:
-                    result['section'] = line.split(':', 1)[1].strip()
-            elif line_upper.startswith('OLD_CONTENT:') or line_upper.startswith('OLD:'):
-                if current_field and content_buffer:
-                    result[current_field] = '\n'.join(content_buffer).strip()
-                current_field = 'old_content'
-                content_buffer = []
-                # Check if content is on same line
-                if ':' in line and len(line.split(':', 1)[1].strip()) > 0:
-                    content_buffer.append(line.split(':', 1)[1].strip())
-            elif line_upper.startswith('NEW_CONTENT:') or line_upper.startswith('NEW:'):
-                if current_field and content_buffer:
-                    result[current_field] = '\n'.join(content_buffer).strip()
-                current_field = 'new_content'
-                content_buffer = []
-                # Check if content is on same line
-                if ':' in line and len(line.split(':', 1)[1].strip()) > 0:
-                    content_buffer.append(line.split(':', 1)[1].strip())
-            elif line_upper.startswith('RATIONALE:') or line_upper.startswith('REASON:'):
-                if current_field and content_buffer:
-                    result[current_field] = '\n'.join(content_buffer).strip()
-                if ':' in line:
-                    result['rationale'] = line.split(':', 1)[1].strip()
-                current_field = None
-            elif current_field:
-                content_buffer.append(line)
+        # Extract OLD_CONTENT (everything between OLD_CONTENT: and NEW_CONTENT:)
+        old_content_match = re.search(
+            r'(?:OLD_CONTENT|OLD):\s*(.*?)(?=(?:NEW_CONTENT|NEW|RATIONALE|REASON):|$)', 
+            suggestion, 
+            re.IGNORECASE | re.DOTALL
+        )
+        if old_content_match:
+            result['old_content'] = old_content_match.group(1).strip()
         
-        # Capture any remaining content
-        if current_field and content_buffer:
-            result[current_field] = '\n'.join(content_buffer).strip()
+        # Extract NEW_CONTENT (everything between NEW_CONTENT: and RATIONALE:)
+        new_content_match = re.search(
+            r'(?:NEW_CONTENT|NEW):\s*(.*?)(?=(?:RATIONALE|REASON):|$)', 
+            suggestion, 
+            re.IGNORECASE | re.DOTALL
+        )
+        if new_content_match:
+            result['new_content'] = new_content_match.group(1).strip()
+        
+        # Extract RATIONALE
+        rationale_match = re.search(r'(?:RATIONALE|REASON):\s*(.+?)$', suggestion, re.IGNORECASE | re.DOTALL)
+        if rationale_match:
+            result['rationale'] = rationale_match.group(1).strip()
         
         # Debug output
         print(f"\n=== Parse Result ===")
         print(f"Section: '{result['section']}'")
         print(f"Old content length: {len(result['old_content'])}")
         print(f"New content length: {len(result['new_content'])}")
-        print(f"New content preview: {result['new_content'][:100]}...")
+        if result['new_content']:
+            print(f"New content preview: {result['new_content'][:200]}...")
+        else:
+            print("New content: EMPTY!")
         print(f"Rationale: '{result['rationale']}'")
         print("=" * 50)
         
@@ -325,6 +320,10 @@ class PromptOptimizer:
             return None
         if not result['new_content']:
             print("Parse failed: No new content provided")
+            print("This usually means:")
+            print("1. LLM didn't output NEW_CONTENT field")
+            print("2. LLM output was truncated")
+            print("3. NEW_CONTENT field has a typo")
             return None
         
         return result
