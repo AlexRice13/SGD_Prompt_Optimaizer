@@ -7,6 +7,7 @@ based on proxy gradients, with permissions bound to current learning rate.
 
 from typing import Callable, Dict, List, Optional
 import difflib
+import re
 from prompts import OPTIMIZER_PROMPT_TEMPLATE
 
 
@@ -273,12 +274,11 @@ class PromptOptimizer:
         Returns:
             Content of the section, or empty string if not found
         """
-        import re
-        
         # Pattern to match section header and content until next section or end
         # Sections are formatted as: ## SectionName\nContent\n
-        pattern = rf'## {re.escape(section_id)}\s*\n(.*?)(?=\n## |\Z)'
-        match = re.search(pattern, full_prompt, re.DOTALL)
+        # Handle potential variations in whitespace
+        pattern = rf'^\s*## {re.escape(section_id)}\s*\n(.*?)(?=^\s*## |\Z)'
+        match = re.search(pattern, full_prompt, re.DOTALL | re.MULTILINE)
         
         if match:
             return match.group(1).strip()
