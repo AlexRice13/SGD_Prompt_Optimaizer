@@ -8,7 +8,41 @@ action space, rather than natural language suggestions.
 from typing import List, Dict, Tuple, Callable
 import numpy as np
 import json
+import re
 from prompts import GRADIENT_AGENT_PROMPT_TEMPLATE, format_samples_category
+
+
+def extract_json_from_text(text: str) -> str:
+    """
+    Extract JSON content from text that may contain additional formatting.
+    
+    Uses regex to find JSON objects or arrays in the text, handling cases where
+    LLMs return JSON wrapped in markdown code blocks or with surrounding text.
+    
+    Args:
+        text: Raw text that may contain JSON
+        
+    Returns:
+        Extracted JSON string, or original text if no JSON pattern found
+    """
+    # Remove markdown code blocks if present
+    text = text.strip()
+    if text.startswith('```'):
+        # Remove ```json or ``` at start and ``` at end
+        text = re.sub(r'^```(?:json)?\s*\n?', '', text)
+        text = re.sub(r'\n?```\s*$', '', text)
+        text = text.strip()
+    
+    # Try to find JSON object or array using regex
+    # Match outermost { } or [ ] with balanced braces
+    json_pattern = r'(\{(?:[^{}]|(?:\{[^{}]*\}))*\}|\[(?:[^\[\]]|(?:\[[^\[\]]*\]))*\])'
+    
+    matches = re.findall(json_pattern, text, re.DOTALL)
+    if matches:
+        # Return the longest match (most likely to be the complete JSON)
+        return max(matches, key=len)
+    
+    return text
 
 
 class GradientAgent:
@@ -217,17 +251,9 @@ class GradientAgent:
         
         # Parse JSON (with error handling)
         try:
-            # Remove markdown code blocks if present
-            llm_output = llm_output.strip()
-            if llm_output.startswith('```'):
-                lines = llm_output.split('\n')
-                llm_output = '\n'.join(lines[1:-1]) if len(lines) > 2 else llm_output
-            if llm_output.startswith('```json'):
-                llm_output = llm_output[7:]
-            if llm_output.endswith('```'):
-                llm_output = llm_output[:-3]
-            
-            structured_gradient = json.loads(llm_output.strip())
+            # Extract JSON from text using regex-based extraction
+            json_text = extract_json_from_text(llm_output)
+            structured_gradient = json.loads(json_text)
             
             # Validate schema
             self._validate_gradient_schema(structured_gradient, editable_sections)
