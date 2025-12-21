@@ -88,18 +88,18 @@ class PromptOptimizer:
         
         return max(10, int(base_limit * lr_ratio))
     
-    def generate_modification_suggestion(self, 
-                                        current_prompt: str,
-                                        proxy_gradient: str,
-                                        learning_rate: float,
-                                        editable_sections: List[str],
-                                        meta_sections: List[str]) -> str:
+    def generate_modification_from_structured_gradient(self, 
+                                                       current_prompt: str,
+                                                       structured_gradient: Dict,
+                                                       learning_rate: float,
+                                                       editable_sections: List[str],
+                                                       meta_sections: List[str]) -> str:
         """
-        Generate prompt modification suggestion.
+        Generate prompt modification from structured gradient.
         
         Args:
             current_prompt: Current JudgePrompt text
-            proxy_gradient: Proxy gradient from GradientAgent
+            structured_gradient: Structured gradient dictionary from GradientAgent
             learning_rate: Current learning rate
             editable_sections: List of sections that can be modified
             meta_sections: List of sections that cannot be modified or deleted
@@ -107,49 +107,141 @@ class PromptOptimizer:
         Returns:
             Modification suggestion as text
         """
+        # Validate action space acknowledgment
+        ack = structured_gradient.get('acknowledged_action_space', {})
         permissions = self.get_permissions(learning_rate)
+        
+        # Check consistency
+        if ack.get('allow_add_section') != permissions['add_sections']:
+            print(f"Warning: Gradient action space mismatch on add_sections")
+        if ack.get('allow_delete_section') != permissions['remove_sections']:
+            print(f"Warning: Gradient action space mismatch on remove_sections")
+        
+        # Extract high-confidence pressures
+        section_pressures = structured_gradient.get('section_pressures', [])
+        high_conf_pressures = [p for p in section_pressures 
+                               if p.get('confidence') in ['medium', 'high']]
+        
+        if not high_conf_pressures:
+            # No confident pressures, skip modification
+            return "NO_MODIFICATION"
+        
+        # Select pressure with highest magnitude (strong > medium > weak)
+        magnitude_priority = {'strong': 3, 'medium': 2, 'weak': 1}
+        high_conf_pressures.sort(
+            key=lambda p: magnitude_priority.get(p.get('magnitude_bucket', 'weak'), 0),
+            reverse=True
+        )
+        
+        primary_pressure = high_conf_pressures[0]
+        
+        # Map structured pressure to modification instruction
         max_chars = self.compute_max_chars(learning_rate)
+        
+        # Build modification prompt based on pressure type
+        pressure_type = primary_pressure.get('pressure_type')
+        direction = primary_pressure.get('direction')
+        section_id = primary_pressure.get('section_id')
+        error_mode = primary_pressure.get('affected_error_mode')
+        magnitude = primary_pressure.get('magnitude_bucket')
+        
+        # Map pressure to modification guidance
+        modification_guidance = self._map_pressure_to_guidance(
+            pressure_type, direction, error_mode, magnitude
+        )
         
         optimizer_prompt = f"""你是一个prompt优化代理。为评分Prompt生成修改建议。
 
 当前评分Prompt：
 {current_prompt}
 
-代理梯度（分析）：
-{proxy_gradient}
+结构化梯度信号：
+- 目标section: {section_id}
+- 压力类型: {pressure_type}
+- 方向: {direction}
+- 受影响的误差模式: {error_mode}
+- 强度: {magnitude}
+
+修改指导：
+{modification_guidance}
 
 优化约束：
 - 学习率: {learning_rate:.4f}
-- 结构编辑阈值: {self.structural_edit_threshold:.4f}
 - 最大字符修改数: {max_chars}
 - 可编辑sections: {', '.join(editable_sections)}
 - 元sections（不可修改或删除）: {', '.join(meta_sections)}
 
 权限：
 - 修改可编辑sections的内容: {permissions['modify_content']}
-- 添加新sections: {permissions['add_sections']} （仅在高学习率时）
-- 删除可编辑sections: {permissions['remove_sections']} （仅在高学习率时）
+- 添加新sections: {permissions['add_sections']}
+- 删除可编辑sections: {permissions['remove_sections']}
 
 重要规则：
 - 元sections（{', '.join(meta_sections)}）永远不能被修改或删除
-- 低学习率时：只能在字符限制内修改现有可编辑sections的内容
-- 高学习率时：也可以添加新sections或删除现有可编辑sections
+- 只修改指定的section: {section_id}
+- 遵循修改指导的语义方向
 - 所有修改必须通过git patch格式
-- 不要改变整体评分目标
-
-任务：生成统一diff格式的具体修改建议。
-聚焦于解决代理梯度中识别的问题的修改。
-保持修改最小化并在字符限制内。
+- 保持修改在字符限制内
 
 输出格式：
-SECTION_TO_MODIFY: [section名称]
+SECTION_TO_MODIFY: {section_id}
 OLD_CONTENT:
 [原始内容]
 NEW_CONTENT:
 [修改后内容]
-RATIONALE: [简要说明]"""
+RATIONALE: [简要说明如何响应压力信号]"""
 
         return self.llm_fn(optimizer_prompt)
+    
+    def _map_pressure_to_guidance(self, pressure_type: str, direction: str,
+                                  error_mode: str, magnitude: str) -> str:
+        """Map structured pressure signals to modification guidance."""
+        
+        # Build guidance based on pressure type
+        guidance_map = {
+            'constraint_strictness': {
+                'increase': '使评分标准更严格、更挑剔',
+                'decrease': '使评分标准更宽松、更包容',
+                'maintain': '保持当前严格度'
+            },
+            'evaluation_threshold': {
+                'increase': '提高通过/优秀的门槛',
+                'decrease': '降低通过/优秀的门槛',
+                'maintain': '保持当前门槛'
+            },
+            'preference_weight': {
+                'increase': '增加特定标准的权重',
+                'decrease': '减少特定标准的权重',
+                'maintain': '保持当前权重分配'
+            },
+            'ambiguity_tolerance': {
+                'increase': '对模糊回答更宽容',
+                'decrease': '对模糊回答更严格',
+                'maintain': '保持对模糊性的当前态度'
+            }
+        }
+        
+        base_guidance = guidance_map.get(pressure_type, {}).get(direction, '适当调整')
+        
+        # Add error mode context
+        error_context = {
+            'overestimation': '（当前倾向于高估）',
+            'underestimation': '（当前倾向于低估）',
+            'variance': '（当前分数波动较大）'
+        }
+        
+        context = error_context.get(error_mode, '')
+        
+        # Add magnitude hint
+        magnitude_hints = {
+            'strong': '进行明显调整',
+            'medium': '进行适度调整',
+            'weak': '进行微小调整'
+        }
+        
+        magnitude_hint = magnitude_hints.get(magnitude, '')
+        
+        return f"{base_guidance}{context}。{magnitude_hint}。"
     
     def parse_modification(self, suggestion: str) -> Optional[Dict[str, str]]:
         """

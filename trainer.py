@@ -216,11 +216,6 @@ class SGDPromptTrainer:
             judge_scores, batch_human_scores, self.config['loss_type']
         )
         
-        # Compute gradient
-        gradient_result = self.gradient_agent.compute_gradient(
-            prompt_text, judge_scores, batch_human_scores, batch_responses
-        )
-        
         # Get learning rate
         lr = self.lr_scheduler.get_current_lr()
         
@@ -228,10 +223,22 @@ class SGDPromptTrainer:
         editable_sections = list(self.current_prompt.get_editable_sections())
         meta_sections = list(self.current_prompt.meta_sections)
         
-        # Generate modification suggestion
-        modification_suggestion = self.optimizer.generate_modification_suggestion(
+        # Compute gradient with structured output
+        gradient_result = self.gradient_agent.compute_gradient(
             prompt_text,
-            gradient_result['proxy_gradient'],
+            editable_sections,
+            meta_sections,
+            judge_scores,
+            batch_human_scores,
+            batch_responses,
+            lr,
+            self.optimizer.structural_edit_threshold
+        )
+        
+        # Generate modification from structured gradient
+        modification_suggestion = self.optimizer.generate_modification_from_structured_gradient(
+            prompt_text,
+            gradient_result['structured_gradient'],
             lr,
             editable_sections,
             meta_sections
