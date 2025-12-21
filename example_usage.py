@@ -232,36 +232,8 @@ def main():
         dataset_path, val_split=0.2
     )
     
-    # Setup LLM functions
-    print("\n3. Setting up LLM functions...")
-    if use_openai:
-        print("Using OpenAI API")
-        model = os.environ.get("OPENAI_MODEL", "gpt-4")
-        max_tokens = int(os.environ.get("MAX_TOKENS", "16000"))  # Configurable max tokens
-        print(f"Model: {model}")
-        print(f"Max tokens: {max_tokens} (dynamically adjusted based on input)")
-        
-        try:
-            judge_fn, gradient_fn, optimizer_fn = create_openai_llm_functions(
-                model=model,
-                judge_temperature=0.3,
-                gradient_temperature=0.7,
-                optimizer_temperature=0.5,
-                max_tokens=max_tokens
-            )
-            print("OpenAI functions created successfully")
-        except Exception as e:
-            print(f"Error creating OpenAI functions: {e}")
-            print("Falling back to mock functions")
-            use_openai = False
-    
-    if not use_openai:
-        print("Using mock LLM functions (for testing without API)")
-        from example_mock_functions import create_mock_llm_functions
-        judge_fn, gradient_fn, optimizer_fn = create_mock_llm_functions()
-    
-    # Configure trainer
-    print("\n4. Configuring trainer...")
+    # Configure trainer (do this first to get max_tokens)
+    print("\n3. Configuring trainer...")
     config = {
         'max_steps': int(os.environ.get("MAX_STEPS", "10")),
         'batch_size': int(os.environ.get("BATCH_SIZE", "16")),
@@ -280,6 +252,33 @@ def main():
     print(f"Configuration:")
     for key, value in config.items():
         print(f"  {key}: {value}")
+    
+    # Setup LLM functions (using max_tokens from config)
+    print("\n4. Setting up LLM functions...")
+    if use_openai:
+        print("Using OpenAI API")
+        model = os.environ.get("OPENAI_MODEL", "gpt-4")
+        print(f"Model: {model}")
+        print(f"Max tokens: {config['max_tokens']} (dynamically adjusted based on input)")
+        
+        try:
+            judge_fn, gradient_fn, optimizer_fn = create_openai_llm_functions(
+                model=model,
+                judge_temperature=0.3,
+                gradient_temperature=0.7,
+                optimizer_temperature=0.5,
+                max_tokens=config['max_tokens']  # Pass max_tokens from config to all three LLM functions
+            )
+            print("OpenAI functions created successfully")
+        except Exception as e:
+            print(f"Error creating OpenAI functions: {e}")
+            print("Falling back to mock functions")
+            use_openai = False
+    
+    if not use_openai:
+        print("Using mock LLM functions (for testing without API)")
+        from example_mock_functions import create_mock_llm_functions
+        judge_fn, gradient_fn, optimizer_fn = create_mock_llm_functions()
     
     # Create trainer
     print("\n5. Initializing trainer...")
