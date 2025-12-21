@@ -1,0 +1,415 @@
+# SGD Prompt Optimization Framework
+
+基于SGD算法思想的RLAIF Judge Prompt优化框架的Python实现。
+
+## 概述
+
+本框架将JudgePrompt视为可训练参数，使用SGD算法在自然语言参数空间中进行优化，使Judge LLM的打分：
+- 对齐人类打分的绝对值
+- 对齐batch内打分的分布/排序结构
+
+## 核心特性
+
+### 1. 结构化Prompt管理 (`judge_prompt.py`)
+- 将Prompt分为多个section（可编辑/冻结）
+- 支持JSON序列化和加载（详见 [JudgePrompt格式说明](JUDGE_PROMPT_FORMAT.md)）
+- 严格的修改权限控制
+
+### 2. 前向传播 (`forward_pass.py`)
+- 使用Judge LLM对响应进行打分
+- 支持self-consistency variance估计
+- **并发LLM调用**：使用ThreadPoolExecutor实现高效批量打分
+- **顺序保证**：使用map模式确保返回顺序与输入一致
+- 批量打分接口
+
+### 3. 损失函数 (`loss_functions.py`)
+实现两类损失：
+- **绝对值对齐损失**: MAE或Huber损失
+- **排序对齐损失**: Pairwise ranking loss, Kendall τ, Spearman ρ
+
+总损失：`L = α · MAE + β · RankLoss`
+
+### 4. 梯度代理 (`gradient_agent.py`)
+使用强LLM构造语言空间中的代理梯度：
+- **信息隔离约束**: 不接触具体样本内容
+- 仅使用聚合统计信息
+- 三类样本选择：高估、低估、已对齐
+
+### 5. 优化器 (`optimizer.py`)
+生成Prompt修改建议：
+- **学习率绑定权限（带阈值比率）**:
+  - **结构编辑阈值**：当 `current_lr >= initial_lr * threshold_ratio` 时允许增删section
+  - **内容修改阶段**：低于阈值时仅修改现有section内容
+  - **动态字符限制**：修改字符数随 `current_lr / initial_lr` 比率缩放
+  - 默认 `structural_edit_threshold_ratio = 0.5`（训练前半段允许结构调整）
+- 语义约束检查
+- Meta sections永不可修改
+
+### 6. 学习率调度 (`lr_scheduler.py`)
+- 余弦退火 (Cosine Annealing)
+- Warmup机制
+- 自适应学习率
+
+### 7. 批量采样 (`batch_sampler.py`)
+**Epoch-aware分层采样策略**：
+- **完整数据集遍历**：每个epoch保证遍历完整数据集，每个样本恰好被使用一次
+- **分层采样**：每个batch包含高分、低分、中间区间样本
+- **Epoch自动推断**：根据dataset大小、batch大小和当前步数自动跟踪epoch
+- **状态追踪**：使用set和flag记录每个epoch已见过的样本
+- **无重复采样**：一个epoch内不会重复采样同一样本
+
+### 8. 评估指标 (`metrics.py`)
+多维度监控：
+- MAE, MSE, RMSE
+- Kendall τ, Spearman ρ
+- Score entropy (防退化)
+- Self-consistency variance
+
+### 9. 早停机制 (`early_stopping.py`)
+触发条件：
+- 验证集loss上升或震荡
+- Rank correlation下降
+- Score entropy collapse
+- Self-consistency variance异常
+
+### 10. 版本控制 (`version_control.py`)
+Git-based prompt evolution tracking：
+- 每次更新 = 一次git commit
+- 完整的训练轨迹记录
+- 支持checkpoint回退
+
+### 11. 训练器 (`trainer.py`)
+集成所有组件的完整训练流程：
+- 完整的SGD训练循环
+- 自动checkpoint管理
+- 训练历史记录
+- **TRL风格接口**：
+  - `logging_steps`: 可配置的日志打印频率（每N步）
+  - `eval_steps`: 可配置的评估频率（每N步完整评估）
+  - 清晰的训练进度输出格式
+
+### 12. 数据集加载器 (`dataset_loader.py`)
+从JSONL文件加载训练数据：
+- 支持标准JSONL格式：`{"prompt": "...", "response": "...", "score": 8.5}`
+- 自动数据集划分（训练/验证）
+- 灵活的字段映射配置
+
+### 13. OpenAI集成 (`openai_llm.py`)
+OpenAI API集成支持：
+- **Judge LLM**：对响应进行打分（JudgePrompt作为system message）
+- Gradient Agent：生成代理梯度
+- Optimizer：生成修改建议
+- 从环境变量读取API密钥和端点
+- **支持并发调用**：高效利用API实现批量处理
+
+## 性能优化
+
+### 并发LLM调用
+框架支持并发调用LLM API，显著提升训练速度：
+- **ForwardPass**：批量打分时使用ThreadPoolExecutor并发调用Judge LLM
+- **顺序保证**：使用`executor.map()`确保返回顺序与输入顺序一致
+- **可配置并发度**：通过`max_workers`参数控制并发线程数（默认10）
+
+### Epoch-aware批量采样
+智能数据采样策略确保高效训练：
+- **完整数据集遍历**：每个epoch遍历完整数据集，避免样本遗漏
+- **无重复采样**：一个epoch内每个样本恰好使用一次
+- **分层保证**：每个batch仍然包含高分、低分、中间样本的均衡分布
+- **自动epoch跟踪**：根据dataset大小、batch大小自动推断和显示当前epoch及进度
+
+### TRL风格的训练接口
+参考Transformer Reinforcement Learning (TRL)库的设计：
+- **`logging_steps`**：控制日志打印频率，避免过度输出（默认每步打印）
+- **`eval_steps`**：控制完整评估频率，在评估步骤之间只执行训练（默认每步评估）
+- **Epoch显示**：训练日志自动显示当前epoch和完成进度
+- 示例：`logging_steps=5, eval_steps=10` 表示每5步打印日志，每10步完整评估
+
+这种设计在训练长时间运行时特别有用，可以：
+- 减少I/O开销
+- 加快训练速度
+- 保持清晰的进度监控
+- 确保数据利用效率
+
+## 安装依赖
+
+```bash
+pip install numpy scipy openai
+```
+
+## 快速开始
+
+### 1. 设置环境变量
+
+```bash
+# 必需：OpenAI API密钥
+export OPENAI_API_KEY='your-api-key'
+
+# 可选：自定义API端点
+export OPENAI_API_BASE='https://your-custom-endpoint.com/v1'
+
+# 可选：模型选择
+export OPENAI_MODEL='gpt-4'
+
+# 可选：初始提示词文件路径
+export PROMPT_PATH='/path/to/your/initial_judge_prompt.json'
+
+# 可选：数据集路径
+export DATASET_PATH='/path/to/your/dataset.jsonl'
+```
+
+### 2. 准备初始JudgePrompt
+
+创建 JSON 格式的 JudgePrompt 文件（详细格式说明见 [JUDGE_PROMPT_FORMAT.md](JUDGE_PROMPT_FORMAT.md)）。
+
+**重要**：sections 数量不限，可以包含任意多个。使用 `meta_sections` 指定不可修改的sections，其他所有sections自动可编辑。在优化过程中，当学习率较高时，框架会自动添加或删除editable sections。
+
+示例（3个sections，2个meta）：
+
+```json
+{
+  "sections": {
+    "Scoring Criteria": "根据完整性、清晰度和准确性评估响应。",
+    "Scale": "使用 1 到 10 的评分标准，其中 1 表示差，10 表示优秀。",
+    "Output Format": "仅输出数字分数，不要输出其他内容。"
+  },
+  "meta_sections": [
+    "Scale",
+    "Output Format"
+  ]
+}
+```
+
+说明：`Scoring Criteria` 是editable（可修改/删除），`Scale` 和 `Output Format` 是meta（永不可修改/删除）
+
+你也可以包含更多sections（例如6个或更多）：
+
+```json
+{
+  "sections": {
+    "Scoring Criteria": "...",
+    "Anti-Bias": "...",
+    "Positive Indicators": "...",
+    "Negative Indicators": "...",
+    "Scale": "...",
+    "Output Format": "..."
+  },
+  "meta_sections": ["Scale", "Output Format"]
+}
+```
+
+说明：前4个sections都是editable，后2个是meta
+
+或使用 Python 代码创建：
+
+```python
+from judge_prompt import JudgePrompt
+
+prompt = JudgePrompt(
+    sections={
+        "Scoring Criteria": "你的评分标准...",
+        "Scale": "使用 1-10 评分标准",
+        "Output Format": "仅输出数字分数",
+        # 可以添加任意多个sections
+    },
+    meta_sections=["Scale", "Output Format"]  # 这些不可修改
+)
+prompt.save("initial_judge_prompt.json")
+```
+
+### 3. 准备数据集
+
+创建JSONL格式的数据集文件，每行一个JSON对象：
+
+```jsonl
+{"prompt": "Evaluate this response", "response": "This is a high quality answer...", "score": 8.5}
+{"prompt": "Evaluate this response", "response": "This is a poor answer", "score": 2.0}
+{"prompt": "Evaluate this response", "response": "This is a medium answer...", "score": 5.5}
+```
+
+### 4. 使用OpenAI API运行
+
+```python
+from judge_prompt import JudgePrompt
+from trainer import SGDPromptTrainer
+from dataset_loader import DatasetLoader
+from openai_llm import create_openai_llm_functions
+
+# 创建初始Prompt
+sections = {
+    "Scoring Criteria": "Evaluate responses based on quality...",
+    "Scale": "Use 1-10 scale...",
+    "Output Format": "Output only the numeric score."
+}
+prompt = JudgePrompt(sections, ["Scoring Criteria"])
+
+# 加载数据集
+loader = DatasetLoader()
+prompts, responses, scores = loader.load_dataset("dataset.jsonl")
+train_resp, train_scores, val_resp, val_scores = loader.split_dataset(
+    responses, scores, val_split=0.2
+)
+
+# 创建OpenAI LLM函数
+judge_fn, gradient_fn, optimizer_fn = create_openai_llm_functions(
+    model="gpt-4",
+    judge_temperature=0.3,
+    gradient_temperature=0.7,
+    optimizer_temperature=0.5
+)
+
+# 配置并训练
+config = {
+    'max_steps': 100,
+    'batch_size': 32,
+    'initial_lr': 0.1,
+    'min_lr': 0.001,
+    'warmup_steps': 10,
+    'alpha': 1.0,
+    'beta': 1.0,
+    'patience': 5,
+    'logging_steps': 5,   # 每5步打印一次日志 (TRL-style)
+    'eval_steps': 10,     # 每10步完整评估一次 (TRL-style)
+    'max_workers': 10,    # 并发调用LLM的线程数
+    'structural_edit_threshold_ratio': 0.5,  # 结构编辑阈值比率 (新增)
+}
+
+trainer = SGDPromptTrainer(
+    judge_llm_fn=judge_fn,
+    gradient_llm_fn=gradient_fn,
+    optimizer_llm_fn=optimizer_fn,
+    initial_prompt=prompt,
+    train_responses=train_resp,
+    train_human_scores=train_scores,
+    val_responses=val_resp,
+    val_human_scores=val_scores,
+    config=config
+)
+
+best_prompt = trainer.train()
+best_prompt.save("best_prompt.json")
+```
+
+### 4. 运行示例
+
+使用OpenAI API运行完整示例：
+
+```bash
+# 设置API密钥
+export OPENAI_API_KEY='your-api-key'
+
+# 运行示例（会自动创建示例数据集）
+python example_usage.py
+```
+
+如果没有设置API密钥，示例会自动回退到mock函数用于测试。
+
+## 环境变量配置
+
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| `OPENAI_API_KEY` | OpenAI API密钥（必需） | - |
+| `OPENAI_API_BASE` | 自定义API端点（可选） | OpenAI默认端点 |
+| `OPENAI_MODEL` | 使用的模型 | `gpt-4` |
+| `DATASET_PATH` | 数据集文件路径 | `sample_dataset.jsonl` |
+| `MAX_STEPS` | 训练步数 | `10` |
+| `BATCH_SIZE` | 批量大小 | `16` |
+| `INITIAL_LR` | 初始学习率 | `0.1` |
+| `MIN_LR` | 最小学习率 | `0.01` |
+| `WARMUP_STEPS` | 预热步数 | `2` |
+| `PATIENCE` | 早停耐心值 | `5` |
+| `LOGGING_STEPS` | 日志打印频率（每N步） | `1` |
+| `EVAL_STEPS` | 评估频率（每N步） | `1` |
+| `MAX_WORKERS` | LLM并发调用线程数 | `10` |
+| `ENABLE_VERSION_CONTROL` | 启用版本控制 | `false` |
+
+## 架构设计
+
+框架严格遵循object.md中定义的设计原则：
+
+1. **参数**: JudgePrompt（结构化文本）
+2. **前向传播**: 使用Prompt对响应打分
+3. **损失函数**: 绝对值对齐 + 排序对齐
+4. **梯度**: 语言空间代理梯度（信息隔离）
+5. **优化器**: 学习率绑定权限的修改生成
+6. **学习率**: 余弦退火 + warmup + step clipping
+7. **批量采样**: 分层采样确保覆盖
+8. **早停**: 多指标监控防退化
+9. **日志**: Git-based版本控制
+
+## 文件结构
+
+```
+.
+├── judge_prompt.py            # Prompt结构表示
+├── forward_pass.py            # 前向传播/打分
+├── loss_functions.py          # 损失函数实现
+├── gradient_agent.py          # 代理梯度构造
+├── optimizer.py               # Prompt优化器
+├── lr_scheduler.py            # 学习率调度
+├── batch_sampler.py           # 批量采样
+├── metrics.py                 # 评估指标
+├── early_stopping.py          # 早停机制
+├── version_control.py         # Git版本控制
+├── trainer.py                 # 主训练器
+├── dataset_loader.py          # 数据集加载器
+├── openai_llm.py              # OpenAI API集成
+├── example_usage.py           # 使用示例（OpenAI版）
+├── example_mock_functions.py  # Mock函数（测试用）
+└── README.md                  # 本文档
+```
+
+## 高级用法
+
+### 自定义损失权重
+
+```python
+config = {
+    'alpha': 2.0,  # 增加MAE权重
+    'beta': 0.5,   # 降低Rank loss权重
+    'loss_type': 'kendall',  # 使用Kendall τ而非pairwise
+}
+```
+
+### 调整学习率策略
+
+```python
+config = {
+    'initial_lr': 0.2,     # 更高的初始学习率
+    'min_lr': 0.0001,      # 更低的最小学习率
+    'warmup_steps': 20,    # 更长的warmup
+}
+```
+
+### 启用版本控制
+
+```python
+config = {
+    'enable_version_control': True,
+    'checkpoint_dir': './my_checkpoints',
+}
+```
+
+## 关键约束
+
+1. **信息隔离**: Gradient Agent不能接触具体样本内容
+2. **权限控制**: 修改权限与学习率绑定
+3. **Step Clipping**: 字符级别的修改限制
+4. **防退化**: 监控score entropy和variance
+
+## 设计理念
+
+本框架将Prompt优化等价为：
+> 在自然语言参数空间中，使用强约束、低学习率的近似SGD，优化一个RLAIF Judge的代理模型。
+
+所有设计决策都围绕：
+- 让梯度有方向
+- 让更新可控
+- 让退化可观测
+
+## 许可
+
+MIT License
+
+## 参考
+
+详细设计文档请参阅 `object.md`。
