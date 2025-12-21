@@ -24,7 +24,8 @@ class PromptOptimizer:
     
     def __init__(self, llm_fn: Callable[[str], str], 
                  structural_edit_threshold_ratio: float = 0.5,
-                 initial_lr: float = 0.1):
+                 initial_lr: float = 0.1,
+                 base_char_limit: int = 300):
         """
         Initialize optimizer.
         
@@ -35,6 +36,7 @@ class PromptOptimizer:
                                              E.g., 0.5 means structural edits only when
                                              current_lr >= 0.5 * initial_lr
             initial_lr: Initial learning rate to compute threshold
+            base_char_limit: Base character limit at initial LR (default: 300)
         
         Raises:
             ValueError: If initial_lr <= 0
@@ -45,6 +47,7 @@ class PromptOptimizer:
         self.llm_fn = llm_fn
         self.structural_edit_threshold_ratio = structural_edit_threshold_ratio
         self.initial_lr = initial_lr
+        self.base_char_limit = base_char_limit
         self.structural_edit_threshold = initial_lr * structural_edit_threshold_ratio
     
     def get_permissions(self, learning_rate: float) -> Dict[str, bool]:
@@ -67,18 +70,17 @@ class PromptOptimizer:
             'reorder_sections': False,  # Not currently supported
         }
     
-    def compute_max_chars(self, learning_rate: float, base_limit: int = 100) -> int:
+    def compute_max_chars(self, learning_rate: float) -> int:
         """
         Compute maximum character changes based on learning rate ratio.
         
         Character limit scales with (current_lr / initial_lr) ratio,
         so modifications become more constrained as training progresses.
         Note: LR ratio is clamped to [0, 1] range, so if LR exceeds initial_lr
-        (which can happen in some schedulers), the char limit is capped at base_limit.
+        (which can happen in some schedulers), the char limit is capped at base_char_limit.
         
         Args:
             learning_rate: Current learning rate
-            base_limit: Base character limit at initial LR
             
         Returns:
             Maximum allowed character changes
@@ -87,7 +89,7 @@ class PromptOptimizer:
         lr_ratio = learning_rate / self.initial_lr
         lr_ratio = max(0.0, min(1.0, lr_ratio))  # Clamp to [0, 1]
         
-        return max(10, int(base_limit * lr_ratio))
+        return max(10, int(self.base_char_limit * lr_ratio))
     
     def generate_modification_from_structured_gradient(self, 
                                                        current_prompt: str,

@@ -103,6 +103,7 @@ class SGDPromptTrainer:
             'eval_steps': 1,     # Evaluate every N steps (TRL-style)
             'max_workers': 10,   # Max concurrent threads for LLM calls
             'structural_edit_threshold_ratio': 0.5,  # Ratio above which structural edits allowed
+            'base_char_limit': 300,  # Base character limit for modifications at initial LR
         }
         
         for key, value in defaults.items():
@@ -134,7 +135,8 @@ class SGDPromptTrainer:
         self.optimizer = PromptOptimizer(
             self.optimizer_llm_fn,
             structural_edit_threshold_ratio=self.config['structural_edit_threshold_ratio'],
-            initial_lr=self.config['initial_lr']
+            initial_lr=self.config['initial_lr'],
+            base_char_limit=self.config['base_char_limit']
         )
         
         # Learning rate scheduler
