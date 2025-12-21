@@ -341,8 +341,12 @@ class SGDPromptTrainer:
             
             # Logging (TRL-style)
             if should_log:
+                epoch = self.batch_sampler.get_current_epoch()
+                epoch_progress = self.batch_sampler.get_epoch_progress()
+                
                 print(f"\n{'='*80}")
-                print(f"Step {self.current_step}/{self.config['max_steps']}")
+                print(f"Step {self.current_step}/{self.config['max_steps']} "
+                      f"[Epoch {epoch}, {epoch_progress:.1%} complete]")
                 print(f"  LR: {step_info['learning_rate']:.4f}")
                 print(f"  Step Train Loss: {step_info['train_loss']:.4f} "
                       f"(MAE: {step_info['mae']:.4f}, Rank: {step_info['rank_loss']:.4f})")
