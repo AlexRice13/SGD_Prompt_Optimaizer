@@ -8,6 +8,7 @@ action space, rather than natural language suggestions.
 from typing import List, Dict, Tuple, Callable
 import numpy as np
 import json
+from prompts import GRADIENT_AGENT_PROMPT_TEMPLATE, format_samples_category
 
 
 class GradientAgent:
@@ -167,109 +168,49 @@ class GradientAgent:
         Returns:
             Structured gradient dictionary
         """
-        # Build sample content strings for LLM context
-        def format_samples(indices, category_name):
-            if len(indices) == 0:
-                return f"  （无{category_name}样本）\n"
-            
-            sample_text = ""
-            for i, idx in enumerate(indices[:self.n_samples_per_category], 1):
-                response = responses[idx] if idx < len(responses) else "[缺失]"
-                if len(response) > 200:
-                    response = response[:200] + "..."
-                error = judge_scores[idx] - human_scores[idx]
-                sample_text += f"  样本{i}: {response}\n"
-                sample_text += f"    人工评分: {human_scores[idx]:.1f}, AI评分: {judge_scores[idx]:.1f}, 误差: {error:+.1f}\n"
-            return sample_text
-        
-        overestimated_samples = format_samples(selected_indices['overestimated'], "高估")
-        underestimated_samples = format_samples(selected_indices['underestimated'], "低估")
-        well_aligned_samples = format_samples(selected_indices['well_aligned'], "对齐")
+        # Build sample content strings for LLM context using centralized formatter
+        overestimated_samples = format_samples_category(
+            selected_indices['overestimated'], responses, human_scores, 
+            judge_scores, "高估", self.n_samples_per_category
+        )
+        underestimated_samples = format_samples_category(
+            selected_indices['underestimated'], responses, human_scores,
+            judge_scores, "低估", self.n_samples_per_category
+        )
+        well_aligned_samples = format_samples_category(
+            selected_indices['well_aligned'], responses, human_scores,
+            judge_scores, "对齐", self.n_samples_per_category
+        )
         
         # Determine action permissions based on LR
         can_add_section = current_lr >= structural_edit_threshold
         can_delete_section = current_lr >= structural_edit_threshold
         can_modify_content = True
         
-        gradient_prompt = f"""你是一个元优化器，为评分prompt生成**结构化语义压力张量**。
-
-当前评分Prompt的sections：
-{current_prompt}
-
-可编辑sections: {', '.join(editable_sections)}
-元sections（永不可改）: {', '.join(meta_sections)}
-
-性能统计：
-- 总样本: {statistics['total_samples']}
-- 整体MAE: {statistics['overall']['mae']:.3f}
-- 平均偏置: {statistics['overall']['mean_error']:.3f}
-- 误差标准差: {statistics['overall']['std_error']:.3f}
-
-误差分类：
-1. 高估（AI>{human_scores.mean():.1f}+）: {statistics['overestimated']['count']}个, 均误差+{statistics['overestimated']['mean_error']:.3f}
-2. 低估（AI<{human_scores.mean():.1f}-）: {statistics['underestimated']['count']}个, 均误差{statistics['underestimated']['mean_error']:.3f}
-3. 对齐: {statistics['well_aligned']['count']}个, MAE={statistics['well_aligned']['mean_abs_error']:.3f}
-
-参考样本（仅供模式分析，勿在输出中引用）：
-高估样本：
-{overestimated_samples}
-低估样本：
-{underestimated_samples}
-对齐样本：
-{well_aligned_samples}
-
-当前动作空间权限：
-- 可添加section: {can_add_section}
-- 可删除section: {can_delete_section}
-- 可修改内容: {can_modify_content}
-- 当前LR: {current_lr:.4f}, 结构编辑阈值: {structural_edit_threshold:.4f}
-
-=== 任务：输出JSON格式的结构化梯度 ===
-
-你必须输出一个JSON对象，包含以下字段：
-
-1. global_signals (全局信号，仅作约束，不直接修改):
-   - bias_direction: "up" / "down" / "neutral"
-   - variance_pressure: "tighten" / "loosen" / "stable"
-
-2. section_pressures (核心：每个可编辑section的压力块):
-   [
-     {{
-       "section_id": "section名称",
-       "immutability_ack": false,  // 必须为false（自检）
-       "pressure_type": "constraint_strictness" | "evaluation_threshold" | "preference_weight" | "ambiguity_tolerance",
-       "direction": "increase" | "decrease" | "maintain",
-       "affected_error_mode": "overestimation" | "underestimation" | "variance",
-       "magnitude_bucket": "weak" | "medium" | "strong",
-       "confidence": "low" | "medium" | "high"
-     }},
-     ...
-   ]
-
-3. acknowledged_action_space (声明理解的动作边界):
-   {{
-     "allow_add_section": {can_add_section},
-     "allow_delete_section": {can_delete_section},
-     "allow_sentence_edit": true,
-     "allow_token_edit": true
-   }}
-
-4. conflicting_pressures (可选，列出冲突的section pairs):
-   [[" section_id_A", "section_id_B"], ...]
-
-5. redundancy_groups (可选，列出可能冗余的section groups):
-   [["section_id_X", "section_id_Y"], ...]
-
-=== 严格约束 ===
-- 不要输出任何"怎么改""改成什么"的描述性文本
-- 不要引用具体样本内容
-- 不要给出修改建议的自然语言描述
-- 只输出上述JSON结构
-- section_id必须精确匹配可编辑sections列表
-- 所有枚举值必须从上述选项中选择
-
-基于统计和样本模式，识别每个可编辑section的语义压力方向和强度。
-输出纯JSON，不要markdown代码块标记。"""
+        # Use centralized prompt template
+        gradient_prompt = GRADIENT_AGENT_PROMPT_TEMPLATE.format(
+            current_prompt=current_prompt,
+            editable_sections=', '.join(editable_sections),
+            meta_sections=', '.join(meta_sections),
+            total_samples=statistics['total_samples'],
+            overall_mae=f"{statistics['overall']['mae']:.3f}",
+            mean_error=f"{statistics['overall']['mean_error']:.3f}",
+            std_error=f"{statistics['overall']['std_error']:.3f}",
+            overestimated_count=statistics['overestimated']['count'],
+            overestimated_mean_error=f"+{statistics['overestimated']['mean_error']:.3f}",
+            underestimated_count=statistics['underestimated']['count'],
+            underestimated_mean_error=f"{statistics['underestimated']['mean_error']:.3f}",
+            well_aligned_count=statistics['well_aligned']['count'],
+            well_aligned_mae=f"{statistics['well_aligned']['mean_abs_error']:.3f}",
+            overestimated_samples=overestimated_samples,
+            underestimated_samples=underestimated_samples,
+            well_aligned_samples=well_aligned_samples,
+            can_add_section=can_add_section,
+            can_delete_section=can_delete_section,
+            can_modify_content=can_modify_content,
+            current_lr=f"{current_lr:.4f}",
+            structural_edit_threshold=f"{structural_edit_threshold:.4f}"
+        )
 
         # Call LLM to get structured output
         llm_output = self.llm_fn(gradient_prompt)

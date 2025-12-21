@@ -7,6 +7,7 @@ based on proxy gradients, with permissions bound to current learning rate.
 
 from typing import Callable, Dict, List, Optional
 import difflib
+from prompts import OPTIMIZER_PROMPT_TEMPLATE
 
 
 class PromptOptimizer:
@@ -150,46 +151,24 @@ class PromptOptimizer:
             pressure_type, direction, error_mode, magnitude
         )
         
-        optimizer_prompt = f"""你是一个prompt优化代理。为评分Prompt生成修改建议。
-
-当前评分Prompt：
-{current_prompt}
-
-结构化梯度信号：
-- 目标section: {section_id}
-- 压力类型: {pressure_type}
-- 方向: {direction}
-- 受影响的误差模式: {error_mode}
-- 强度: {magnitude}
-
-修改指导：
-{modification_guidance}
-
-优化约束：
-- 学习率: {learning_rate:.4f}
-- 最大字符修改数: {max_chars}
-- 可编辑sections: {', '.join(editable_sections)}
-- 元sections（不可修改或删除）: {', '.join(meta_sections)}
-
-权限：
-- 修改可编辑sections的内容: {permissions['modify_content']}
-- 添加新sections: {permissions['add_sections']}
-- 删除可编辑sections: {permissions['remove_sections']}
-
-重要规则：
-- 元sections（{', '.join(meta_sections)}）永远不能被修改或删除
-- 只修改指定的section: {section_id}
-- 遵循修改指导的语义方向
-- 所有修改必须通过git patch格式
-- 保持修改在字符限制内
-
-输出格式：
-SECTION_TO_MODIFY: {section_id}
-OLD_CONTENT:
-[原始内容]
-NEW_CONTENT:
-[修改后内容]
-RATIONALE: [简要说明如何响应压力信号]"""
+        # Use centralized prompt template
+        optimizer_prompt = OPTIMIZER_PROMPT_TEMPLATE.format(
+            current_prompt=current_prompt,
+            section_id=section_id,
+            pressure_type=pressure_type,
+            direction=direction,
+            error_mode=error_mode,
+            magnitude=magnitude,
+            modification_guidance=modification_guidance,
+            learning_rate=f"{learning_rate:.4f}",
+            max_chars=max_chars,
+            editable_sections=', '.join(editable_sections),
+            meta_sections=', '.join(meta_sections),
+            modify_content=permissions['modify_content'],
+            add_sections=permissions['add_sections'],
+            remove_sections=permissions['remove_sections'],
+            meta_sections_list=', '.join(meta_sections)
+        )
 
         return self.llm_fn(optimizer_prompt)
     
