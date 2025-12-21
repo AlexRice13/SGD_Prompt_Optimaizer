@@ -277,7 +277,8 @@ class PromptOptimizer:
         # Pattern to match section header and content until next section or end
         # Sections are formatted as: ## SectionName\nContent\n
         # Handle potential variations in whitespace
-        pattern = rf'^\s*## {re.escape(section_id)}\s*\n(.*?)(?=^\s*## |\Z)'
+        escaped_section = re.escape(section_id)
+        pattern = rf'^\s*## {escaped_section}\s*\n(.*?)(?=^\s*## |\Z)'
         match = re.search(pattern, full_prompt, re.DOTALL | re.MULTILINE)
         
         if match:
