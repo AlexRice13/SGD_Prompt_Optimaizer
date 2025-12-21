@@ -16,7 +16,7 @@ def extract_json_from_text(text: str) -> str:
     """
     Extract JSON content from text that may contain additional formatting.
     
-    Uses regex to find JSON objects or arrays in the text, handling cases where
+    Uses multiple strategies to find JSON in the text, handling cases where
     LLMs return JSON wrapped in markdown code blocks or with surrounding text.
     
     Args:
@@ -33,15 +33,32 @@ def extract_json_from_text(text: str) -> str:
         text = re.sub(r'\n?```\s*$', '', text)
         text = text.strip()
     
-    # Try to find JSON object or array using regex
-    # Match outermost { } or [ ] with balanced braces
-    json_pattern = r'(\{(?:[^{}]|(?:\{[^{}]*\}))*\}|\[(?:[^\[\]]|(?:\[[^\[\]]*\]))*\])'
+    # Strategy 1: Try to find the first complete JSON object or array
+    # Look for opening brace/bracket and match to closing
+    for start_char, end_char in [('{', '}'), ('[', ']')]:
+        start_idx = text.find(start_char)
+        if start_idx == -1:
+            continue
+        
+        # Count braces to find matching closing brace
+        count = 0
+        for i in range(start_idx, len(text)):
+            if text[i] == start_char:
+                count += 1
+            elif text[i] == end_char:
+                count -= 1
+                if count == 0:
+                    # Found matching closing brace
+                    return text[start_idx:i+1]
     
-    matches = re.findall(json_pattern, text, re.DOTALL)
-    if matches:
-        # Return the longest match (most likely to be the complete JSON)
-        return max(matches, key=len)
+    # Strategy 2: If no balanced JSON found, try regex on cleaned text
+    # This handles simple cases
+    json_pattern = r'(\{[^}]*\}|\[[^\]]*\])'
+    match = re.search(json_pattern, text, re.DOTALL)
+    if match:
+        return match.group(1)
     
+    # Strategy 3: Return original text if nothing found
     return text
 
 
