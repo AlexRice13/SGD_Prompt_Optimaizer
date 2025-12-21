@@ -173,16 +173,14 @@ Please provide your score:"""
         
         Args:
             gradient_prompt: Prompt with statistics for gradient construction
+                            (already contains complete instructions from prompts.py)
             
         Returns:
             Proxy gradient as text
         """
-        system_msg = (
-            "You are a meta-optimizer analyzing judge prompt performance. "
-            "Provide structured analysis based only on the statistics provided."
-        )
-        
-        return self.call_llm(gradient_prompt, system_message=system_msg, temperature=0.7)
+        # gradient_prompt already contains complete Chinese instructions with terminology
+        # explanations from prompts.py - no additional system message needed
+        return self.call_llm(gradient_prompt, system_message=None, temperature=0.7)
     
     def optimizer_llm_fn(self, optimizer_prompt: str) -> str:
         """
@@ -190,16 +188,14 @@ Please provide your score:"""
         
         Args:
             optimizer_prompt: Prompt with gradient and constraints
+                             (already contains complete instructions from prompts.py)
             
         Returns:
             Modification suggestion as text
         """
-        system_msg = (
-            "You are a prompt optimizer. Generate precise, minimal modifications "
-            "that address the identified issues while respecting all constraints."
-        )
-        
-        return self.call_llm(optimizer_prompt, system_message=system_msg, temperature=0.5)
+        # optimizer_prompt already contains complete Chinese instructions with terminology
+        # explanations from prompts.py - no additional system message needed
+        return self.call_llm(optimizer_prompt, system_message=None, temperature=0.5)
 
 
 def create_openai_llm_functions(model: str = "gpt-4",
