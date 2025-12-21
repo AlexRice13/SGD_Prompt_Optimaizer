@@ -9,7 +9,7 @@ from typing import List, Dict, Tuple, Callable
 import numpy as np
 import json
 import re
-from prompts import GRADIENT_AGENT_PROMPT_TEMPLATE, format_samples_category
+from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE, format_samples_category
 
 
 def extract_json_from_text(text: str) -> str:
@@ -189,8 +189,7 @@ class GradientAgent:
                                       judge_scores: np.ndarray,
                                       human_scores: np.ndarray,
                                       responses: List[str],
-                                      current_lr: float,
-                                      structural_edit_threshold: float) -> Dict:
+                                      current_lr: float) -> Dict:
         """
         Construct simple gradient with optimization direction and section to optimize.
         
@@ -208,7 +207,6 @@ class GradientAgent:
             human_scores: All human scores
             responses: All response texts
             current_lr: Current learning rate
-            structural_edit_threshold: LR threshold for structural edits
             
         Returns:
             Simple gradient dictionary with opti_direction and section_to_opti
@@ -307,8 +305,7 @@ class GradientAgent:
                         judge_scores: np.ndarray,
                         human_scores: np.ndarray,
                         responses: List[str],
-                        current_lr: float,
-                        structural_edit_threshold: float) -> Dict:
+                        current_lr: float) -> Dict:
         """
         Full gradient computation pipeline - simplified version.
         
@@ -320,7 +317,6 @@ class GradientAgent:
             human_scores: Human reference scores
             responses: List of response texts for reference
             current_lr: Current learning rate
-            structural_edit_threshold: LR threshold for structural edits
             
         Returns:
             Dictionary containing simple gradient with opti_direction and section_to_opti
@@ -336,7 +332,7 @@ class GradientAgent:
             current_prompt, editable_sections, meta_sections,
             statistics, selected_indices,
             judge_scores, human_scores, responses,
-            current_lr, structural_edit_threshold
+            current_lr
         )
         
         return {

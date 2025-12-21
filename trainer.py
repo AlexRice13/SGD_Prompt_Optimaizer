@@ -233,8 +233,7 @@ class SGDPromptTrainer:
             judge_scores,
             batch_human_scores,
             batch_responses,
-            lr,
-            lr  # Pass lr as structural_edit_threshold (not used in simplified version)
+            lr
         )
         
         # Generate modification from simple gradient

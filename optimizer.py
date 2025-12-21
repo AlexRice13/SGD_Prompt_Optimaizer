@@ -6,7 +6,7 @@ based on simple gradients, with modification strength controlled by learning rat
 """
 
 from typing import Callable, Dict, List, Optional
-from prompts import OPTIMIZER_PROMPT_TEMPLATE
+from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
 
 
 class PromptOptimizer:
