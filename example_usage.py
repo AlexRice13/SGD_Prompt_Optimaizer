@@ -245,7 +245,6 @@ def main():
         'eval_steps': int(os.environ.get("EVAL_STEPS", "1")),        # Evaluate every N steps (TRL-style)
         'max_workers': int(os.environ.get("MAX_WORKERS", "10")),     # Concurrent LLM calls
         'max_tokens': int(os.environ.get("MAX_TOKENS", "16000")),    # Max output tokens (dynamically adjusted)
-        'structural_edit_threshold_ratio': float(os.environ.get("STRUCTURAL_EDIT_THRESHOLD_RATIO", "0.5")),  # Structural edit threshold
         'enable_version_control': os.environ.get("ENABLE_VERSION_CONTROL", "false").lower() == "true",
     }
     
