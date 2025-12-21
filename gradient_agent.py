@@ -1,8 +1,8 @@
 """
-Gradient Agent: Construct structured semantic pressure tensor.
+Gradient Agent: Construct simple optimization direction.
 
-Outputs structured gradient signals that are isomorphic to the optimizer's
-action space, rather than natural language suggestions.
+Outputs simple gradient signals with optimization direction and target section,
+rather than complex structured schemas.
 """
 
 from typing import List, Dict, Tuple, Callable
@@ -64,11 +64,13 @@ def extract_json_from_text(text: str) -> str:
 
 class GradientAgent:
     """
-    Constructs structured semantic pressure tensor.
+    Constructs simple optimization gradient.
     
-    Outputs gradient as a structured schema aligned with optimizer's action space,
-    rather than natural language suggestions. Each pressure signal explicitly
-    specifies section_id, action_type, direction, and magnitude.
+    Outputs gradient as a simple JSON with just two fields:
+    - opti_direction: Abstract optimization direction as a string
+    - section_to_opti: Which section should be optimized
+    
+    This is a simplified version that avoids complex structured schemas.
     """
     
     def __init__(self, llm_fn: Callable[[str], str], 
@@ -82,16 +84,6 @@ class GradientAgent:
         """
         self.llm_fn = llm_fn
         self.n_samples_per_category = n_samples_per_category
-        
-        # Define valid enumeration values for schema
-        self.valid_pressure_types = {
-            'constraint_strictness', 'evaluation_threshold', 
-            'preference_weight', 'ambiguity_tolerance'
-        }
-        self.valid_directions = {'increase', 'decrease', 'maintain'}
-        self.valid_error_modes = {'overestimation', 'underestimation', 'variance'}
-        self.valid_magnitudes = {'weak', 'medium', 'strong'}
-        self.valid_confidences = {'low', 'medium', 'high'}
     
     def select_gradient_samples(self, judge_scores: np.ndarray, 
                                human_scores: np.ndarray) -> Dict[str, np.ndarray]:
@@ -200,9 +192,11 @@ class GradientAgent:
                                       current_lr: float,
                                       structural_edit_threshold: float) -> Dict:
         """
-        Construct structured semantic pressure tensor.
+        Construct simple gradient with optimization direction and section to optimize.
         
-        Outputs a schema-aligned gradient instead of natural language.
+        Simplified version that outputs only the essential information:
+        - opti_direction: Abstract optimization direction as a string
+        - section_to_opti: Which section to optimize
         
         Args:
             current_prompt: Current JudgePrompt text
@@ -217,7 +211,7 @@ class GradientAgent:
             structural_edit_threshold: LR threshold for structural edits
             
         Returns:
-            Structured gradient dictionary
+            Simple gradient dictionary with opti_direction and section_to_opti
         """
         # Build sample content strings for LLM context using centralized formatter
         overestimated_samples = format_samples_category(
@@ -233,13 +227,9 @@ class GradientAgent:
             judge_scores, "对齐", self.n_samples_per_category
         )
         
-        # Determine action permissions based on LR
-        can_add_section = current_lr >= structural_edit_threshold
-        can_delete_section = current_lr >= structural_edit_threshold
-        can_modify_content = True
-        
-        # Use centralized prompt template
-        gradient_prompt = GRADIENT_AGENT_PROMPT_TEMPLATE.format(
+        # Use centralized prompt template (will be updated for simplified output)
+        from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE
+        gradient_prompt = GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE.format(
             current_prompt=current_prompt,
             editable_sections=', '.join(editable_sections),
             meta_sections=', '.join(meta_sections),
@@ -256,14 +246,10 @@ class GradientAgent:
             overestimated_samples=overestimated_samples,
             underestimated_samples=underestimated_samples,
             well_aligned_samples=well_aligned_samples,
-            can_add_section=can_add_section,
-            can_delete_section=can_delete_section,
-            can_modify_content=can_modify_content,
-            current_lr=f"{current_lr:.4f}",
-            structural_edit_threshold=f"{structural_edit_threshold:.4f}"
+            current_lr=f"{current_lr:.4f}"
         )
 
-        # Call LLM to get structured output
+        # Call LLM to get simple output
         llm_output = self.llm_fn(gradient_prompt)
         
         # Parse JSON (with error handling)
@@ -281,89 +267,38 @@ class GradientAgent:
             # Remove trailing commas before closing braces/brackets
             json_text = re.sub(r',(\s*[}\]])', r'\1', json_text)
             
-            structured_gradient = json.loads(json_text)
+            simple_gradient = json.loads(json_text)
             
-            # Validate schema
-            self._validate_gradient_schema(structured_gradient, editable_sections)
+            # Validate simple schema
+            if 'opti_direction' not in simple_gradient or 'section_to_opti' not in simple_gradient:
+                raise ValueError("Missing required fields: opti_direction and/or section_to_opti")
             
-            return structured_gradient
+            return simple_gradient
             
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Fallback to default structure if parsing fails
-            print(f"Warning: Failed to parse structured gradient: {e}")
+            print(f"Warning: Failed to parse simple gradient: {e}")
             print(f"LLM output preview: {llm_output[:200]}...")
-            return self._get_fallback_gradient(editable_sections, statistics)
+            return self._get_fallback_simple_gradient(editable_sections, statistics)
     
-    def _validate_gradient_schema(self, gradient: Dict, editable_sections: List[str]):
-        """Validate that gradient follows required schema."""
-        required_keys = {'global_signals', 'section_pressures', 'acknowledged_action_space'}
-        if not required_keys.issubset(gradient.keys()):
-            raise ValueError(f"Missing required keys: {required_keys - set(gradient.keys())}")
-        
-        # Validate section_pressures
-        for pressure in gradient['section_pressures']:
-            if pressure['section_id'] not in editable_sections:
-                print(f"Warning: Unknown section_id '{pressure['section_id']}' in gradient")
-            
-            required_fields = {'section_id', 'pressure_type', 'direction', 
-                             'affected_error_mode', 'magnitude_bucket', 'confidence'}
-            if not required_fields.issubset(pressure.keys()):
-                raise ValueError(f"Section pressure missing fields: {required_fields - set(pressure.keys())}")
-            
-            # Validate enumerations
-            if pressure['pressure_type'] not in self.valid_pressure_types:
-                raise ValueError(f"Invalid pressure_type: {pressure['pressure_type']}")
-            if pressure['direction'] not in self.valid_directions:
-                raise ValueError(f"Invalid direction: {pressure['direction']}")
-            if pressure['affected_error_mode'] not in self.valid_error_modes:
-                raise ValueError(f"Invalid error_mode: {pressure['affected_error_mode']}")
-            if pressure['magnitude_bucket'] not in self.valid_magnitudes:
-                raise ValueError(f"Invalid magnitude: {pressure['magnitude_bucket']}")
-            if pressure['confidence'] not in self.valid_confidences:
-                raise ValueError(f"Invalid confidence: {pressure['confidence']}")
-    
-    def _get_fallback_gradient(self, editable_sections: List[str], 
-                              statistics: Dict) -> Dict:
-        """Generate a safe fallback gradient if LLM output fails."""
-        # Determine primary error mode
+    def _get_fallback_simple_gradient(self, editable_sections: List[str], 
+                                      statistics: Dict) -> Dict:
+        """Generate a safe fallback simple gradient if LLM output fails."""
+        # Determine primary error mode and direction
         mean_error = statistics['overall']['mean_error']
         if mean_error > 0.1:
-            primary_mode = "overestimation"
-            direction = "increase"  # Increase constraint strictness
+            direction = "评分标准应该更严格，降低高估倾向"
         elif mean_error < -0.1:
-            primary_mode = "underestimation"
-            direction = "decrease"  # Decrease constraint strictness
+            direction = "评分标准应该更宽松，降低低估倾向"
         else:
-            primary_mode = "variance"
-            direction = "maintain"
+            direction = "保持当前评分标准，轻微调整以减少评分波动"
         
-        # Create minimal valid gradient
-        section_pressures = []
-        for section in editable_sections:
-            section_pressures.append({
-                "section_id": section,
-                "immutability_ack": False,
-                "pressure_type": "constraint_strictness",
-                "direction": direction,
-                "affected_error_mode": primary_mode,
-                "magnitude_bucket": "weak",
-                "confidence": "low"
-            })
+        # Select first editable section as target
+        target_section = editable_sections[0] if editable_sections else "Scoring Criteria"
         
         return {
-            "global_signals": {
-                "bias_direction": "up" if mean_error > 0 else "down" if mean_error < 0 else "neutral",
-                "variance_pressure": "tighten" if statistics['overall']['std_error'] > 1.0 else "stable"
-            },
-            "section_pressures": section_pressures,
-            "acknowledged_action_space": {
-                "allow_add_section": False,
-                "allow_delete_section": False,
-                "allow_sentence_edit": True,
-                "allow_token_edit": True
-            },
-            "conflicting_pressures": [],
-            "redundancy_groups": []
+            "opti_direction": direction,
+            "section_to_opti": target_section
         }
     
     def compute_gradient(self, current_prompt: str,
@@ -375,7 +310,7 @@ class GradientAgent:
                         current_lr: float,
                         structural_edit_threshold: float) -> Dict:
         """
-        Full gradient computation pipeline.
+        Full gradient computation pipeline - simplified version.
         
         Args:
             current_prompt: Current JudgePrompt text
@@ -388,7 +323,7 @@ class GradientAgent:
             structural_edit_threshold: LR threshold for structural edits
             
         Returns:
-            Dictionary containing structured gradient
+            Dictionary containing simple gradient with opti_direction and section_to_opti
         """
         # Select samples
         selected_indices = self.select_gradient_samples(judge_scores, human_scores)
@@ -396,8 +331,8 @@ class GradientAgent:
         # Compute aggregated statistics
         statistics = self.compute_statistics(judge_scores, human_scores, selected_indices)
         
-        # Construct structured gradient
-        structured_gradient = self.construct_structured_gradient(
+        # Construct simple gradient
+        simple_gradient = self.construct_structured_gradient(
             current_prompt, editable_sections, meta_sections,
             statistics, selected_indices,
             judge_scores, human_scores, responses,
@@ -407,5 +342,5 @@ class GradientAgent:
         return {
             'statistics': statistics,
             'selected_indices': selected_indices,
-            'structured_gradient': structured_gradient
+            'simple_gradient': simple_gradient
         }

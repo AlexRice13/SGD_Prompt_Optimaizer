@@ -8,6 +8,62 @@
 # 梯度代理（GradientAgent）Prompts
 # ============================================================================
 
+# Simplified gradient prompt template
+GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE = """你是一个元优化器，为评分prompt生成**简单优化指导**。
+
+【专有名词解释】
+- Section：评分prompt的组成部分，如"评分标准"、"评分量表"等。
+- 元Sections（Meta Sections）：永远不能被修改或删除的sections，如"评分量表"、"输出格式"等。
+- 可编辑Sections：可以根据需要修改的sections。
+
+当前评分Prompt的sections：
+{current_prompt}
+
+可编辑sections: {editable_sections}
+元sections（永不可改）: {meta_sections}
+
+性能统计：
+- 总样本: {total_samples}
+- 整体MAE: {overall_mae}
+- 平均偏置: {mean_error}
+- 误差标准差: {std_error}
+
+误差分类：
+1. 高估（AI>人工+）: {overestimated_count}个, 均误差{overestimated_mean_error}
+2. 低估（AI<人工-）: {underestimated_count}个, 均误差{underestimated_mean_error}
+3. 对齐: {well_aligned_count}个, MAE={well_aligned_mae}
+
+参考样本（仅供模式分析，勿在输出中引用）：
+高估样本：
+{overestimated_samples}
+低估样本：
+{underestimated_samples}
+对齐样本：
+{well_aligned_samples}
+
+当前学习率: {current_lr}
+
+=== 任务：输出简单JSON格式的优化指导 ===
+
+你必须输出一个简单的JSON对象，只包含两个字段：
+
+{{
+  "opti_direction": "用中文描述抽象的优化方向，说明应该如何调整评分标准（例如：'使评分标准更严格，减少高估倾向' 或 '放宽评分标准，提高对质量较好回答的评分'）",
+  "section_to_opti": "需要优化的section名称（必须从可编辑sections中选择）"
+}}
+
+=== 严格约束 ===
+- 只输出上述JSON结构，不要添加任何markdown标记或说明文字
+- opti_direction应该是一句简洁的中文描述，说明优化方向
+- section_to_opti必须精确匹配可编辑sections列表中的某个名称
+- JSON中的字符串用双引号
+- 不要在JSON对象的最后一个元素后加逗号
+
+基于统计和样本模式，确定优化方向和目标section。
+直接输出JSON对象。"""
+
+
+# Original complex gradient prompt (kept for reference, not used in simplified version)
 GRADIENT_AGENT_PROMPT_TEMPLATE = """你是一个元优化器，为评分prompt生成**结构化语义压力张量**。
 
 【专有名词解释】
@@ -134,6 +190,40 @@ GRADIENT_AGENT_PROMPT_TEMPLATE = """你是一个元优化器，为评分prompt�
 # 优化器（Optimizer）Prompts  
 # ============================================================================
 
+# Simplified optimizer prompt template
+OPTIMIZER_SIMPLE_PROMPT_TEMPLATE = """你是一个prompt优化代理。根据优化指导直接修改评分Prompt的指定section。
+
+【专有名词解释】
+- Prompt优化代理：根据优化方向直接生成修改后的section内容的组件。
+- 学习率（Learning Rate, LR）：控制修改幅度的参数。
+- 元Sections：永不可修改或删除的框架性sections。
+
+当前评分Prompt：
+{current_prompt}
+
+优化指导：
+- 目标section: {section_to_opti}
+- 优化方向: {opti_direction}
+- 修改强度: {strength_desc}（基于学习率 {learning_rate}）
+
+约束：
+- 可编辑sections: {editable_sections}
+- 元sections（不可修改）: {meta_sections}
+
+任务：
+请直接输出修改后的完整section内容。不要使用git patch格式或其他复杂格式。
+
+重要规则：
+1. 只修改指定的section: {section_to_opti}
+2. 元sections永远不能被修改
+3. 根据优化方向和修改强度调整内容
+4. 输出应该是section的完整新内容，不是增量修改
+5. 不要添加任何说明文字或格式标记，直接输出新内容
+
+直接输出修改后的section内容："""
+
+
+# Original complex optimizer prompt (kept for reference, not used in simplified version)
 OPTIMIZER_PROMPT_TEMPLATE = """你是一个prompt优化代理。为评分Prompt生成修改建议。
 
 【专有名词解释】

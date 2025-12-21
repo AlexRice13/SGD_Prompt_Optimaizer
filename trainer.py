@@ -102,8 +102,6 @@ class SGDPromptTrainer:
             'logging_steps': 1,  # Log every N steps (TRL-style)
             'eval_steps': 1,     # Evaluate every N steps (TRL-style)
             'max_workers': 10,   # Max concurrent threads for LLM calls
-            'structural_edit_threshold_ratio': 0.5,  # Ratio above which structural edits allowed
-            'base_char_limit': 300,  # Base character limit for modifications at initial LR
             'debug': False,  # Enable full LLM output logging for debugging
             # Note: max_tokens should be set via config or MAX_TOKENS env variable
             # No hardcoded default here to ensure user configuration is respected
@@ -137,9 +135,7 @@ class SGDPromptTrainer:
         # Optimizer
         self.optimizer = PromptOptimizer(
             self.optimizer_llm_fn,
-            structural_edit_threshold_ratio=self.config['structural_edit_threshold_ratio'],
             initial_lr=self.config['initial_lr'],
-            base_char_limit=self.config['base_char_limit'],
             debug=self.config['debug']
         )
         
@@ -229,7 +225,7 @@ class SGDPromptTrainer:
         editable_sections = list(self.current_prompt.get_editable_sections())
         meta_sections = list(self.current_prompt.meta_sections)
         
-        # Compute gradient with structured output
+        # Compute simple gradient
         gradient_result = self.gradient_agent.compute_gradient(
             prompt_text,
             editable_sections,
@@ -238,20 +234,23 @@ class SGDPromptTrainer:
             batch_human_scores,
             batch_responses,
             lr,
-            self.optimizer.structural_edit_threshold
+            lr  # Pass lr as structural_edit_threshold (not used in simplified version)
         )
         
-        # Generate modification from structured gradient
-        modification_suggestion = self.optimizer.generate_modification_from_structured_gradient(
+        # Generate modification from simple gradient
+        simple_gradient = gradient_result['simple_gradient']
+        section_to_opti = simple_gradient.get('section_to_opti', '')
+        
+        modification_suggestion = self.optimizer.generate_modification_from_simple_gradient(
             prompt_text,
-            gradient_result['structured_gradient'],
+            simple_gradient,
             lr,
             editable_sections,
             meta_sections
         )
         
         # Parse and validate modification
-        modification = self.optimizer.parse_modification(modification_suggestion)
+        new_content = self.optimizer.parse_modification(modification_suggestion, section_to_opti)
         
         step_info = {
             'step': self.current_step,
@@ -263,33 +262,33 @@ class SGDPromptTrainer:
             'modification_valid': False
         }
         
-        if modification:
+        if new_content and section_to_opti:
             print(f"\n=== Modification Validation ===")
-            print(f"Target section: {modification['section']}")
-            print(f"Is editable: {modification['section'] in editable_sections}")
-            print(f"Is meta: {modification['section'] in meta_sections}")
+            print(f"Target section: {section_to_opti}")
+            print(f"Is editable: {section_to_opti in editable_sections}")
+            print(f"Is meta: {section_to_opti in meta_sections}")
             
             is_valid = self.optimizer.validate_modification(
-                modification, lr, editable_sections, meta_sections
+                new_content, section_to_opti, lr, editable_sections, meta_sections
             )
             print(f"Validation result: {is_valid}")
             
             if is_valid:
                 # Apply modification
-                print(f"Attempting to update section: {modification['section']}")
+                print(f"Attempting to update section: {section_to_opti}")
                 success = self.current_prompt.update_section(
-                    modification['section'],
-                    modification['new_content']
+                    section_to_opti,
+                    new_content
                 )
                 print(f"Update success: {success}")
                 
                 if success:
                     step_info['modification_valid'] = True
-                    step_info['modified_section'] = modification['section']
-                    step_info['modification_rationale'] = modification.get('rationale', '')
-                    print(f"✓ Successfully modified section: {modification['section']}")
+                    step_info['modified_section'] = section_to_opti
+                    step_info['opti_direction'] = simple_gradient.get('opti_direction', '')
+                    print(f"✓ Successfully modified section: {section_to_opti}")
                 else:
-                    print(f"✗ Failed to update section (might be meta): {modification['section']}")
+                    print(f"✗ Failed to update section (might be meta): {section_to_opti}")
             else:
                 print(f"✗ Modification validation failed")
         else:
@@ -403,7 +402,7 @@ class SGDPromptTrainer:
                     val_loss,
                     val_metrics,
                     str(step_info['gradient_statistics']),
-                    step_info.get('modification_rationale', '')
+                    step_info.get('opti_direction', '')
                 )
             
             # Update best prompt (only on evaluation steps when val_loss is available)
