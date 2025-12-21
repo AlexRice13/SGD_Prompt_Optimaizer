@@ -108,22 +108,19 @@ class OpenAILLM:
         Judge LLM function for scoring responses.
         
         Args:
-            judge_prompt: The JudgePrompt text
+            judge_prompt: The JudgePrompt text (used as system prompt)
             response: Response to score
             
         Returns:
             Numeric score
         """
-        full_prompt = f"""{judge_prompt}
-
-Response to evaluate:
+        # Use judge_prompt directly as system message
+        user_prompt = f"""Response to evaluate:
 {response}
 
 Please provide your score:"""
         
-        system_msg = "You are a fair and consistent judge. Follow the scoring criteria exactly."
-        
-        result = self.call_llm(full_prompt, system_message=system_msg, temperature=0.3)
+        result = self.call_llm(user_prompt, system_message=judge_prompt, temperature=0.3)
         
         # Extract numeric score from response
         score = self._extract_score(result)

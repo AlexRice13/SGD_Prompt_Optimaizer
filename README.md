@@ -96,7 +96,7 @@ Git-based prompt evolution tracking：
 
 ### 13. OpenAI集成 (`openai_llm.py`)
 OpenAI API集成支持：
-- Judge LLM：对响应进行打分
+- **Judge LLM**：对响应进行打分（JudgePrompt作为system message）
 - Gradient Agent：生成代理梯度
 - Optimizer：生成修改建议
 - 从环境变量读取API密钥和端点

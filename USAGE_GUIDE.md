@@ -97,7 +97,15 @@ If you want to use a different LLM provider, implement these three functions:
 def my_judge_llm(judge_prompt: str, response: str) -> float:
     """
     Score a response using the judge prompt.
+    
+    Args:
+        judge_prompt: The complete JudgePrompt (should be used as system message)
+        response: The response to evaluate
+        
     Returns: numeric score (e.g., 1-10)
+    
+    Note: The judge_prompt should be passed as the system message to the LLM,
+          and the response to evaluate should be in the user message.
     """
     # Your implementation here
     return score
