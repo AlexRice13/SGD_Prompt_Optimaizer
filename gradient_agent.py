@@ -255,7 +255,8 @@ class GradientAgent:
         # Call LLM to get gradient with multiple modifications
         llm_output = self.llm_fn(gradient_prompt)
         
-        # Handle None or empty response with safe fallback
+        # First check: Handle None or empty response before any processing
+        # This catches cases where LLM completely fails to respond
         if not llm_output or not llm_output.strip():
             warnings.warn(
                 "Gradient Agent LLM returned empty response. Using fallback gradient.",
@@ -266,7 +267,8 @@ class GradientAgent:
         # Extract content outside <think></think> tags for reasoning models
         llm_output = extract_outside_think_tags(llm_output)
         
-        # Check again after extraction
+        # Second check: Handle case where response only contained think tags
+        # This catches reasoning models that put everything inside <think> tags
         if not llm_output or not llm_output.strip():
             warnings.warn(
                 "Gradient Agent LLM response was empty after removing think tags. Using fallback gradient.",

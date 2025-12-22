@@ -127,6 +127,10 @@ Here is my actual response:
     print(f"Input: {text_mixed_case}")
     print(f"Output: {result}")
     assert "<think>" not in result.lower()
+    assert "<THINK>" not in result
+    assert "<Think>" not in result
+    assert "uppercase thinking" not in result
+    assert "more thinking" not in result
     assert "actual content" in result
     assert "end" in result
     print("✓ Test 7 passed")

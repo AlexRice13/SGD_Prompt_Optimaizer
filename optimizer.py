@@ -137,7 +137,8 @@ class PromptOptimizer:
 
         llm_output = self.llm_fn(optimizer_prompt)
         
-        # Handle None or empty response with safe fallback
+        # First check: Handle None or empty response before any processing
+        # This catches cases where LLM completely fails to respond
         if not llm_output or not llm_output.strip():
             warnings.warn(
                 f"Optimizer LLM returned empty response for {action} {section_name}. Skipping modification.",
@@ -148,7 +149,8 @@ class PromptOptimizer:
         # Extract content outside <think></think> tags for reasoning models
         llm_output = extract_outside_think_tags(llm_output)
         
-        # Check again after extraction
+        # Second check: Handle case where response only contained think tags
+        # This catches reasoning models that put everything inside <think> tags
         if not llm_output or not llm_output.strip():
             warnings.warn(
                 f"Optimizer LLM response for {action} {section_name} was empty after removing think tags. Skipping modification.",

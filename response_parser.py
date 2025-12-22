@@ -53,6 +53,10 @@ def remove_think_tags(text: str) -> str:
     This is useful for extracting the actual response when reasoning models
     include their reasoning process in <think> tags within the content.
     
+    Note: Uses non-greedy regex matching which is efficient for typical LLM
+    responses (<10KB). For very large inputs (>1MB), consider preprocessing
+    to split into smaller chunks.
+    
     Args:
         text: Text that may contain <think></think> tags
         
