@@ -7,6 +7,7 @@ based on simple gradients, with modification strength controlled by learning rat
 
 from typing import Callable, Dict, List, Optional
 from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
+from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
 
 
 class PromptOptimizer:
@@ -41,37 +42,60 @@ class PromptOptimizer:
         self.initial_lr = initial_lr
         self.debug = debug
     
-    def generate_modification_from_simple_gradient(self, 
-                                                   current_prompt: str,
-                                                   simple_gradient: Dict,
-                                                   learning_rate: float,
-                                                   editable_sections: List[str],
-                                                   meta_sections: List[str]) -> str:
+    def generate_modification_from_gradient(self, 
+                                           current_prompt: str,
+                                           modification: Dict,
+                                           learning_rate: float,
+                                           editable_sections: List[str],
+                                           meta_sections: List[str]) -> Dict:
         """
-        Generate prompt modification from simple gradient.
+        Generate prompt modification from a single gradient modification.
         
         Args:
             current_prompt: Current JudgePrompt text
-            simple_gradient: Simple gradient dict with opti_direction and section_to_opti
+            modification: Single modification dict with action, section_name, and opti_direction
             learning_rate: Current learning rate
             editable_sections: List of sections that can be modified
             meta_sections: List of sections that cannot be modified or deleted
             
         Returns:
-            Modified section content as text
+            Dict with action, section_name, and content (for edit/add) or success status
         """
-        # Extract gradient fields
-        opti_direction = simple_gradient.get('opti_direction', '')
-        section_to_opti = simple_gradient.get('section_to_opti', '')
+        action = modification.get('action', '')
+        section_name = modification.get('section_name', '')
+        opti_direction = modification.get('opti_direction', '')
         
-        if not opti_direction or not section_to_opti:
-            print("Warning: Missing opti_direction or section_to_opti in gradient")
-            return "NO_MODIFICATION"
+        if not action or not section_name:
+            print("Warning: Missing action or section_name in modification")
+            return {'action': 'skip', 'section_name': section_name, 'reason': 'missing_fields'}
         
-        # Check if section is valid
-        if section_to_opti in meta_sections:
-            print(f"Warning: Cannot modify meta section '{section_to_opti}'")
-            return "NO_MODIFICATION"
+        # Validate action type
+        if action not in ['edit', 'add', 'remove']:
+            print(f"Warning: Invalid action '{action}'")
+            return {'action': 'skip', 'section_name': section_name, 'reason': 'invalid_action'}
+        
+        # Check LR threshold for structural changes
+        if action in ['add', 'remove'] and not can_perform_structural_edit(learning_rate):
+            print(f"Warning: Cannot {action} section at LR={learning_rate:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}")
+            return {'action': 'skip', 'section_name': section_name, 'reason': 'lr_threshold'}
+        
+        # Check meta section constraints
+        if section_name in meta_sections:
+            print(f"Warning: Cannot perform {action} on meta section '{section_name}'")
+            return {'action': 'skip', 'section_name': section_name, 'reason': 'meta_section'}
+        
+        # For remove action, no LLM call needed
+        if action == 'remove':
+            return {
+                'action': 'remove',
+                'section_name': section_name,
+                'content': None
+            }
+        
+        # For edit/add actions, need opti_direction
+        if not opti_direction:
+            print(f"Warning: Missing opti_direction for {action} action")
+            return {'action': 'skip', 'section_name': section_name, 'reason': 'missing_direction'}
         
         # Calculate modification strength based on learning rate
         lr_ratio = learning_rate / self.initial_lr
@@ -85,16 +109,27 @@ class PromptOptimizer:
         else:
             strength_desc = "轻微"
         
-        # Use centralized simple prompt template
+        # Prepare task description based on action
+        if action == 'edit':
+            task_description = f"请直接输出修改后的'{section_name}' section的完整内容。不要使用git patch格式或其他复杂格式。"
+            output_description = "修改后的section内容"
+        else:  # action == 'add'
+            task_description = f"请直接输出新增的'{section_name}' section的完整内容。这是一个新section，需要根据优化方向创建。"
+            output_description = "新section的内容"
+        
+        # Use centralized prompt template with dynamic fields
         from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
         optimizer_prompt = OPTIMIZER_SIMPLE_PROMPT_TEMPLATE.format(
             current_prompt=current_prompt,
-            section_to_opti=section_to_opti,
+            action=action,
+            section_name=section_name,
             opti_direction=opti_direction,
             learning_rate=f"{learning_rate:.4f}",
             strength_desc=strength_desc,
             editable_sections=', '.join(editable_sections),
-            meta_sections=', '.join(meta_sections)
+            meta_sections=', '.join(meta_sections),
+            task_description=task_description,
+            output_description=output_description
         )
 
         llm_output = self.llm_fn(optimizer_prompt)
@@ -102,39 +137,52 @@ class PromptOptimizer:
         # Log LLM output for debugging
         if self.debug:
             print(f"\n{'='*80}")
-            print(f"=== FULL Optimizer LLM Output (Debug Mode) ===")
+            print(f"=== FULL Optimizer LLM Output (Debug Mode) - {action} {section_name} ===")
             print(f"Total length: {len(llm_output)} characters")
             print(f"\n{llm_output}")
             print(f"{'='*80}\n")
         else:
-            print(f"\n=== Optimizer LLM Output ===")
+            print(f"\n=== Optimizer LLM Output - {action} {section_name} ===")
             print(f"Total length: {len(llm_output)} characters")
             print(f"First 500 chars:\n{llm_output[:500]}")
             if len(llm_output) > 500:
                 print(f"Last 500 chars:\n{llm_output[-500:]}")
             print("=" * 50)
         
-        return llm_output
+        return {
+            'action': action,
+            'section_name': section_name,
+            'content': llm_output
+        }
     
-    def parse_modification(self, suggestion: str, section_name: str) -> Optional[str]:
+    def parse_modification(self, result: Dict) -> Optional[str]:
         """
-        Parse modification suggestion to extract new section content.
-        
-        In simplified version, the LLM output should be the complete new section content.
+        Parse modification result to extract new section content.
         
         Args:
-            suggestion: Text suggestion from LLM (should be new section content)
-            section_name: Name of section being modified
+            result: Result dict from generate_modification_from_gradient
             
         Returns:
-            New section content or None if empty
+            New section content or None if not applicable
         """
-        if not suggestion or suggestion.strip() == "NO_MODIFICATION":
+        action = result.get('action', '')
+        section_name = result.get('section_name', '')
+        content = result.get('content', '')
+        
+        if action == 'skip':
+            print(f"Parse: Skipping modification due to {result.get('reason', 'unknown')}")
+            return None
+        
+        if action == 'remove':
+            # For remove action, no content to parse
+            return None
+        
+        if not content or content.strip() == "NO_MODIFICATION":
             print("Parse: No modification suggested")
             return None
         
         # Clean up the output
-        new_content = suggestion.strip()
+        new_content = content.strip()
         
         # Remove markdown code blocks if present
         import re
@@ -144,6 +192,7 @@ class PromptOptimizer:
         
         # Debug output
         print(f"\n=== Parse Result ===")
+        print(f"Action: '{action}'")
         print(f"Section: '{section_name}'")
         print(f"New content length: {len(new_content)}")
         if new_content:
@@ -159,8 +208,7 @@ class PromptOptimizer:
         
         return new_content
     
-    def validate_modification(self, new_content: str,
-                            section_name: str,
+    def validate_modification(self, result: Dict,
                             learning_rate: float,
                             editable_sections: List[str],
                             meta_sections: List[str]) -> bool:
@@ -168,8 +216,7 @@ class PromptOptimizer:
         Validate that modification respects constraints.
         
         Args:
-            new_content: New section content
-            section_name: Name of section being modified
+            result: Result dict from generate_modification_from_gradient
             learning_rate: Current learning rate
             editable_sections: List of editable sections
             meta_sections: List of sections that cannot be modified
@@ -177,14 +224,29 @@ class PromptOptimizer:
         Returns:
             True if modification is valid
         """
+        action = result.get('action', '')
+        section_name = result.get('section_name', '')
+        content = result.get('content', '')
+        
+        # Skip actions are not valid for application
+        if action == 'skip':
+            print(f"Validation failed: Action is skip due to {result.get('reason', 'unknown')}")
+            return False
+        
         # Check section is not a meta section
         if section_name in meta_sections:
             print(f"Validation failed: {section_name} is a meta section")
             return False
         
-        # Check new_content is not empty
-        if not new_content or not new_content.strip():
-            print("Validation failed: Empty new content")
+        # Check LR threshold for structural operations
+        if action in ['add', 'remove'] and not can_perform_structural_edit(learning_rate):
+            print(f"Validation failed: {action} not allowed at LR={learning_rate:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}")
             return False
+        
+        # For edit/add actions, check content is not empty
+        if action in ['edit', 'add']:
+            if not content or not content.strip():
+                print("Validation failed: Empty content for edit/add action")
+                return False
         
         return True
