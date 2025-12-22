@@ -435,6 +435,8 @@ class SGDPromptTrainer:
             
             # Update best prompt based on early_stopping's decision
             # This ensures best_prompt aligns with early_stopping.best_step
+            # After calling early_stopping.step(), get_best_step() returns current_step
+            # if and only if this step just became the new best (val_loss improved)
             if should_eval and val_loss is not None and self.early_stopping.get_best_step() == self.current_step:
                 # This step is the new best according to early_stopping
                 best_val_loss = val_loss
@@ -461,14 +463,15 @@ class SGDPromptTrainer:
         
         print(f"\n{'='*80}")
         print(f"Training Completed")
-        print(f"  Best step (from early_stopping): {self.early_stopping.get_best_step()}")
+        es_best_step = self.early_stopping.get_best_step()
+        print(f"  Best step (from early_stopping): {es_best_step}")
         print(f"  Best step (from trainer): {self.best_prompt_step}")
         print(f"  Best val loss: {self.early_stopping.get_best_loss():.4f}")
         
         # Verify alignment
-        if self.best_prompt_step != self.early_stopping.get_best_step():
+        if self.best_prompt_step != es_best_step:
             print(f"  WARNING: Mismatch between best_prompt_step ({self.best_prompt_step}) "
-                  f"and early_stopping.best_step ({self.early_stopping.get_best_step()})")
+                  f"and early_stopping.best_step ({es_best_step})")
         
         print(f"{'='*80}")
         
