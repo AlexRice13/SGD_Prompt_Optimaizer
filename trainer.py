@@ -75,6 +75,7 @@ class SGDPromptTrainer:
         
         # Training state
         self.current_step = 0
+        self.best_prompt_step = 0  # Track which step has the best prompt
         self.history = {
             'train_loss': [],
             'val_loss': [],
@@ -277,6 +278,10 @@ class SGDPromptTrainer:
             if is_valid:
                 # Apply modification
                 print(f"Attempting to update section: {modification['section']}")
+                
+                # Store old content for debug logging
+                old_section_content = self.current_prompt.get_section(modification['section']) or ""
+                
                 success = self.current_prompt.update_section(
                     modification['section'],
                     modification['new_content']
@@ -287,6 +292,21 @@ class SGDPromptTrainer:
                     step_info['modification_valid'] = True
                     step_info['modified_section'] = modification['section']
                     step_info['modification_rationale'] = modification.get('rationale', '')
+                    step_info['old_content'] = old_section_content
+                    step_info['new_content'] = modification['new_content']
+                    
+                    # Debug mode: print the actual modification
+                    if self.config['debug']:
+                        print(f"\n{'='*80}")
+                        print(f"=== JudgePrompt Modification (Step {self.current_step}) ===")
+                        print(f"Section: {modification['section']}")
+                        print(f"\nOLD CONTENT:")
+                        print(f"{old_section_content}")
+                        print(f"\nNEW CONTENT:")
+                        print(f"{modification['new_content']}")
+                        print(f"\nRATIONALE: {modification.get('rationale', 'N/A')}")
+                        print(f"{'='*80}\n")
+                    
                     print(f"✓ Successfully modified section: {modification['section']}")
                 else:
                     print(f"✗ Failed to update section (might be meta): {modification['section']}")
@@ -337,6 +357,7 @@ class SGDPromptTrainer:
         
         best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
         best_val_loss = val_loss
+        self.best_prompt_step = 0  # Initial prompt is at step 0
         
         for step in range(self.config['max_steps']):
             self.current_step = step + 1
@@ -406,17 +427,36 @@ class SGDPromptTrainer:
                     step_info.get('modification_rationale', '')
                 )
             
-            # Update best prompt (only on evaluation steps when val_loss is available)
-            if should_eval and val_loss is not None and val_loss <= best_val_loss:
+            # Check early stopping first to update its state
+            # Store previous best to detect if this step becomes new best
+            if should_eval and val_loss is not None:
+                prev_best_step = self.early_stopping.get_best_step()
+                should_stop = self.early_stopping.step(val_loss, val_metrics, self.current_step)
+                is_new_best = (self.early_stopping.get_best_step() != prev_best_step)
+            else:
+                should_stop = False
+                is_new_best = False
+            
+            # Update best prompt based on early_stopping's decision
+            # This ensures best_prompt aligns with early_stopping.best_step
+            if should_eval and val_loss is not None and is_new_best:
+                # This step is the new best according to early_stopping
                 best_val_loss = val_loss
                 best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
+                self.best_prompt_step = self.current_step
+                
+                if self.config['debug']:
+                    print(f"\n*** Updated best_prompt at step {self.current_step} (val_loss: {val_loss:.4f}) ***\n")
+                
                 if self.version_control:
                     self.version_control.create_checkpoint_tag(self.current_step, is_best=True)
             
-            # Check early stopping (only on evaluation steps when val_loss is available)
-            if should_eval and val_loss is not None and self.early_stopping.step(val_loss, val_metrics, self.current_step):
+            # Trigger early stopping if needed
+            if should_stop:
                 print(f"\n{'='*80}")
                 print(f"Early stopping triggered at step {self.current_step}")
+                print(f"Best step (from early_stopping): {self.early_stopping.get_best_step()}")
+                print(f"Best prompt step (from trainer): {self.best_prompt_step}")
                 print(f"{'='*80}")
                 break
             
@@ -425,8 +465,16 @@ class SGDPromptTrainer:
         
         print(f"\n{'='*80}")
         print(f"Training Completed")
-        print(f"  Best step: {self.early_stopping.get_best_step()}")
+        es_best_step = self.early_stopping.get_best_step()
+        print(f"  Best step (from early_stopping): {es_best_step}")
+        print(f"  Best step (from trainer): {self.best_prompt_step}")
         print(f"  Best val loss: {self.early_stopping.get_best_loss():.4f}")
+        
+        # Verify alignment
+        if self.best_prompt_step != es_best_step:
+            print(f"  WARNING: Mismatch between best_prompt_step ({self.best_prompt_step}) "
+                  f"and early_stopping.best_step ({es_best_step})")
+        
         print(f"{'='*80}")
         
         return best_prompt
