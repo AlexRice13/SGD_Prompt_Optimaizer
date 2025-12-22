@@ -24,7 +24,6 @@ class OpenAILLM:
     def __init__(self,
                  model: str = "gpt-4",
                  temperature: float = 0.7,
-                 max_tokens: int = 2000,
                  api_key: Optional[str] = None,
                  api_base: Optional[str] = None):
         """
@@ -33,13 +32,11 @@ class OpenAILLM:
         Args:
             model: Model name (e.g., "gpt-4", "gpt-3.5-turbo")
             temperature: Sampling temperature
-            max_tokens: Maximum tokens in response
             api_key: API key (if None, reads from OPENAI_API_KEY env var)
             api_base: API base URL (if None, reads from OPENAI_API_BASE env var)
         """
         self.model = model
         self.temperature = temperature
-        self.max_tokens = max_tokens
         
         # Get API key from env or parameter
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -62,36 +59,17 @@ class OpenAILLM:
                 "openai package not found. Install it with: pip install openai"
             )
     
-    def _estimate_token_count(self, text: str) -> int:
-        """
-        Estimate token count for text.
-        Uses rough approximation: ~4 characters per token for English/Chinese.
-        
-        Args:
-            text: Input text
-            
-        Returns:
-            Estimated token count
-        """
-        # Rough estimate: 4 chars per token (conservative for both English and Chinese)
-        return len(text) // 4
-    
     def call_llm(self, 
                  prompt: str,
                  system_message: Optional[str] = None,
-                 temperature: Optional[float] = None,
-                 max_tokens: Optional[int] = None) -> str:
+                 temperature: Optional[float] = None) -> str:
         """
         Call OpenAI API with prompt.
-        
-        Dynamic token management: Like vLLM, adjusts max_tokens based on input length
-        to avoid exceeding total context limit.
         
         Args:
             prompt: User prompt
             system_message: Optional system message
             temperature: Override default temperature
-            max_tokens: Override default max_tokens
             
         Returns:
             LLM response text
@@ -104,28 +82,12 @@ class OpenAILLM:
         messages.append({"role": "user", "content": prompt})
         
         temp = temperature if temperature is not None else self.temperature
-        requested_max_tokens = max_tokens if max_tokens is not None else self.max_tokens
-        
-        # Estimate input tokens
-        total_input_text = (system_message or "") + prompt
-        input_tokens = self._estimate_token_count(total_input_text)
-        
-        # Dynamic shrink: max_tokens = requested_max_tokens - input_tokens
-        # This ensures total tokens don't exceed model's context window
-        # Add small buffer (100 tokens) for safety
-        adjusted_max_tokens = max(100, requested_max_tokens - input_tokens - 100)
-        
-        # If input is very large, warn the user
-        if adjusted_max_tokens < requested_max_tokens * 0.3:
-            print(f"Warning: Input is very large ({input_tokens} tokens estimated). "
-                  f"Max output tokens reduced from {requested_max_tokens} to {adjusted_max_tokens}.")
         
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=temp,
-                max_tokens=adjusted_max_tokens
+                temperature=temp
             )
             
             return response.choices[0].message.content.strip()
@@ -233,7 +195,6 @@ def create_openai_llm_functions(model: str = "gpt-4",
                                  judge_temperature: float = 0.3,
                                  gradient_temperature: float = 0.7,
                                  optimizer_temperature: float = 0.5,
-                                 max_tokens: Optional[int] = None,
                                  api_key: Optional[str] = None,
                                  api_base: Optional[str] = None):
     """
@@ -244,23 +205,18 @@ def create_openai_llm_functions(model: str = "gpt-4",
         judge_temperature: Temperature for judge LLM
         gradient_temperature: Temperature for gradient LLM
         optimizer_temperature: Temperature for optimizer LLM
-        max_tokens: Maximum output tokens (if None, uses config from trainer; dynamically adjusted based on input)
         api_key: API key (if None, reads from env)
         api_base: API base URL (if None, reads from env)
         
     Returns:
         Tuple of (judge_fn, gradient_fn, optimizer_fn)
     """
-    # Use provided max_tokens or fall back to OpenAILLM's default (2000)
-    # Typically max_tokens should be passed from trainer config
-    actual_max_tokens = max_tokens if max_tokens is not None else 2000
-    
-    # Create instances with appropriate temperatures and max_tokens for each role
-    judge_llm = OpenAILLM(model=model, temperature=judge_temperature, max_tokens=actual_max_tokens, 
+    # Create instances with appropriate temperatures for each role
+    judge_llm = OpenAILLM(model=model, temperature=judge_temperature, 
                          api_key=api_key, api_base=api_base)
-    gradient_llm = OpenAILLM(model=model, temperature=gradient_temperature, max_tokens=actual_max_tokens,
+    gradient_llm = OpenAILLM(model=model, temperature=gradient_temperature,
                             api_key=api_key, api_base=api_base)
-    optimizer_llm = OpenAILLM(model=model, temperature=optimizer_temperature, max_tokens=actual_max_tokens,
+    optimizer_llm = OpenAILLM(model=model, temperature=optimizer_temperature,
                              api_key=api_key, api_base=api_base)
     
     def judge_fn(prompt: str, response: str) -> float:
