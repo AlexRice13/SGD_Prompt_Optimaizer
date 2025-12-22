@@ -38,6 +38,9 @@ checkpoints/
 *.log
 *.jsonl
 
+# Test files
+test_*.py
+
 # OS
 .DS_Store
 Thumbs.db
