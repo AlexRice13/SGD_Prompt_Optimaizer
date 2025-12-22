@@ -331,8 +331,13 @@ class SGDPromptTrainer:
                 "Initial prompt", "Baseline"
             )
         
+        # Initialize early stopping with the initial evaluation
+        # This ensures early_stopping is aware of step 0
+        self.early_stopping.step(val_loss, val_metrics, 0)
+        
         best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
         best_val_loss = val_loss
+        best_step = 0  # Track the step with best validation loss
         
         for step in range(self.config['max_steps']):
             self.current_step = step + 1
@@ -405,6 +410,7 @@ class SGDPromptTrainer:
             # Update best prompt (only on evaluation steps when val_loss is available)
             if should_eval and val_loss is not None and val_loss <= best_val_loss:
                 best_val_loss = val_loss
+                best_step = self.current_step  # Track which step had the best val loss
                 best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
                 if self.version_control:
                     self.version_control.create_checkpoint_tag(self.current_step, is_best=True)
@@ -421,8 +427,10 @@ class SGDPromptTrainer:
         
         print(f"\n{'='*80}")
         print(f"Training Completed")
-        print(f"  Best step: {self.early_stopping.get_best_step()}")
-        print(f"  Best val loss: {self.early_stopping.get_best_loss():.4f}")
+        print(f"  Best step: {best_step}")
+        print(f"  Best val loss: {best_val_loss:.4f}")
+        print(f"  (EarlyStopping tracked best step: {self.early_stopping.get_best_step()}, "
+              f"best loss: {self.early_stopping.get_best_loss():.4f})")
         print(f"{'='*80}")
         
         return best_prompt

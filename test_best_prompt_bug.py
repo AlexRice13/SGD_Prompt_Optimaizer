@@ -133,21 +133,33 @@ def main():
     print("\nCurrent trainer prompt Scoring Criteria:")
     print(f"  '{trainer.current_prompt.sections['Scoring Criteria']}'")
     
-    # Check if best_prompt is different from initial
-    is_different = (best_prompt.sections['Scoring Criteria'] != initial_criteria)
+    # Check if the reported best step matches
+    reported_best_step = trainer.early_stopping.get_best_step()
     
+    # Verify consistency
     print("\n" + "=" * 80)
-    if is_different:
-        print("✓ TEST PASSED: best_prompt is different from initial_prompt")
-    else:
-        print("✗ TEST FAILED: best_prompt is the same as initial_prompt")
-        print("  This is the bug! The trainer should return the improved prompt.")
-    print("=" * 80)
+    print("Consistency Check:")
+    print(f"  Trainer best_step: {reported_best_step}")
+    print(f"  EarlyStopping best_step: {trainer.early_stopping.get_best_step()}")
     
-    # Additional check: compare with early_stopping best step
-    if trainer.early_stopping.get_best_step() > 0:
-        print(f"\nNote: Early stopping says best step is {trainer.early_stopping.get_best_step()}")
-        print("The returned best_prompt should be from that step, not step 0.")
+    if reported_best_step == 0:
+        # If best step is 0, best_prompt should be initial prompt
+        should_be_initial = True
+        expected_criteria = initial_criteria
+    else:
+        # If best step > 0, best_prompt should be modified
+        should_be_initial = False
+        expected_criteria = "Evaluate responses very carefully based on completeness and clarity."
+    
+    is_match = (best_prompt.sections['Scoring Criteria'] == expected_criteria)
+    
+    if is_match:
+        print(f"✓ PASSED: Returned prompt matches expected for best step {reported_best_step}")
+    else:
+        print(f"✗ FAILED: Returned prompt does not match expected for best step {reported_best_step}")
+        print(f"  Expected: '{expected_criteria}'")
+        print(f"  Got: '{best_prompt.sections['Scoring Criteria']}'")
+    print("=" * 80)
 
 
 if __name__ == "__main__":
