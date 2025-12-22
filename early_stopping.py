@@ -29,7 +29,8 @@ class EarlyStopping:
         Initialize early stopping.
         
         Args:
-            patience: Number of steps to wait before stopping
+            patience: Number of steps to wait before stopping.
+                     Set to 0 to disable early stopping completely.
             min_delta: Minimum change to qualify as improvement
             monitor_rank_corr: Monitor rank correlation decline
             monitor_entropy: Monitor score entropy collapse
@@ -66,8 +67,17 @@ class EarlyStopping:
             current_step: Current training step
             
         Returns:
-            True if training should stop
+            True if training should stop, False otherwise.
+            Always returns False if patience is 0 (early stopping disabled).
         """
+        # If patience is 0, early stopping is disabled
+        if self.patience == 0:
+            # Still track best loss and step for logging purposes
+            if val_loss < self.best_loss - self.min_delta:
+                self.best_loss = val_loss
+                self.best_step = current_step
+            return False
+        
         self.loss_history.append(val_loss)
         
         # Track metrics
