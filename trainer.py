@@ -428,16 +428,18 @@ class SGDPromptTrainer:
                 )
             
             # Check early stopping first to update its state
+            # Store previous best to detect if this step becomes new best
             if should_eval and val_loss is not None:
+                prev_best_step = self.early_stopping.get_best_step()
                 should_stop = self.early_stopping.step(val_loss, val_metrics, self.current_step)
+                is_new_best = (self.early_stopping.get_best_step() != prev_best_step)
             else:
                 should_stop = False
+                is_new_best = False
             
             # Update best prompt based on early_stopping's decision
             # This ensures best_prompt aligns with early_stopping.best_step
-            # After calling early_stopping.step(), get_best_step() returns current_step
-            # if and only if this step just became the new best (val_loss improved)
-            if should_eval and val_loss is not None and self.early_stopping.get_best_step() == self.current_step:
+            if should_eval and val_loss is not None and is_new_best:
                 # This step is the new best according to early_stopping
                 best_val_loss = val_loss
                 best_prompt = JudgePrompt.from_dict(self.current_prompt.to_dict())
