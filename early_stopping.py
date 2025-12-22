@@ -70,12 +70,16 @@ class EarlyStopping:
             True if training should stop, False otherwise.
             Always returns False if patience is 0 (early stopping disabled).
         """
+        # Track best loss and step (always, even when early stopping disabled)
+        if val_loss < self.best_loss - self.min_delta:
+            self.best_loss = val_loss
+            self.best_step = current_step
+            self.counter = 0
+        else:
+            self.counter += 1
+        
         # If patience is 0, early stopping is disabled
         if self.patience == 0:
-            # Still track best loss and step for logging purposes
-            if val_loss < self.best_loss - self.min_delta:
-                self.best_loss = val_loss
-                self.best_step = current_step
             return False
         
         self.loss_history.append(val_loss)
@@ -87,14 +91,6 @@ class EarlyStopping:
             self.entropy_history.append(metrics['score_entropy'])
         if 'mean_self_consistency_var' in metrics:
             self.variance_history.append(metrics['mean_self_consistency_var'])
-        
-        # Check for improvement in validation loss
-        if val_loss < self.best_loss - self.min_delta:
-            self.best_loss = val_loss
-            self.best_step = current_step
-            self.counter = 0
-        else:
-            self.counter += 1
         
         # Check secondary criteria
         warnings = []
