@@ -8,8 +8,14 @@ Supports concurrent API calls for efficiency.
 import os
 import json
 import re
+import warnings
 from typing import Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor
+from response_parser import (
+    extract_content_from_response,
+    get_safe_response_content,
+    extract_outside_think_tags
+)
 
 
 class OpenAILLM:
@@ -90,7 +96,27 @@ class OpenAILLM:
                 temperature=temp
             )
             
-            return response.choices[0].message.content.strip()
+            # Handle reasoning models and extract content safely
+            content, reasoning_content = extract_content_from_response(response)
+            
+            # Get safe response with fallback
+            result = get_safe_response_content(
+                content, 
+                reasoning_content,
+                fallback_value="",
+                warn=True
+            )
+            
+            # If still empty after extraction, raise error
+            if not result:
+                warnings.warn(
+                    "OpenAI API returned empty response after parsing. "
+                    "This may indicate an API issue or model problem.",
+                    UserWarning
+                )
+                return ""
+            
+            return result
         
         except Exception as e:
             print(f"Error calling OpenAI API: {e}")

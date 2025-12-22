@@ -6,8 +6,11 @@ based on simple gradients, with modification strength controlled by learning rat
 """
 
 from typing import Callable, Dict, List, Optional
+import re
+import warnings
 from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
 from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
+from response_parser import extract_outside_think_tags
 
 
 class PromptOptimizer:
@@ -133,6 +136,25 @@ class PromptOptimizer:
         )
 
         llm_output = self.llm_fn(optimizer_prompt)
+        
+        # Handle None or empty response with safe fallback
+        if not llm_output or not llm_output.strip():
+            warnings.warn(
+                f"Optimizer LLM returned empty response for {action} {section_name}. Skipping modification.",
+                UserWarning
+            )
+            return {'action': 'skip', 'section_name': section_name, 'reason': 'empty_llm_response'}
+        
+        # Extract content outside <think></think> tags for reasoning models
+        llm_output = extract_outside_think_tags(llm_output)
+        
+        # Check again after extraction
+        if not llm_output or not llm_output.strip():
+            warnings.warn(
+                f"Optimizer LLM response for {action} {section_name} was empty after removing think tags. Skipping modification.",
+                UserWarning
+            )
+            return {'action': 'skip', 'section_name': section_name, 'reason': 'empty_after_think_removal'}
         
         # Log LLM output for debugging
         if self.debug:
