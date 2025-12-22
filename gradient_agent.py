@@ -10,6 +10,7 @@ import numpy as np
 import json
 import re
 from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE, format_samples_category
+from constants import STRUCTURAL_EDIT_LR_THRESHOLD
 
 
 def extract_json_from_text(text: str) -> str:
@@ -278,7 +279,6 @@ class GradientAgent:
             
             # Validate and filter modifications based on LR threshold
             validated_modifications = []
-            lr_threshold = 0.6
             
             for mod in modifications:
                 # Validate required fields
@@ -295,8 +295,8 @@ class GradientAgent:
                     continue
                 
                 # Check LR threshold for structural changes
-                if action in ['add', 'remove'] and current_lr < lr_threshold:
-                    print(f"Warning: Cannot {action} section at LR={current_lr:.4f} < {lr_threshold}, skipping")
+                if action in ['add', 'remove'] and current_lr < STRUCTURAL_EDIT_LR_THRESHOLD:
+                    print(f"Warning: Cannot {action} section at LR={current_lr:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}, skipping")
                     continue
                 
                 # Check meta section constraint

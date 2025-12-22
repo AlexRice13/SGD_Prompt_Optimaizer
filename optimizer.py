@@ -7,6 +7,7 @@ based on simple gradients, with modification strength controlled by learning rat
 
 from typing import Callable, Dict, List, Optional
 from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
+from constants import STRUCTURAL_EDIT_LR_THRESHOLD
 
 
 class PromptOptimizer:
@@ -74,9 +75,8 @@ class PromptOptimizer:
             return {'action': 'skip', 'section_name': section_name, 'reason': 'invalid_action'}
         
         # Check LR threshold for structural changes
-        lr_threshold = 0.6
-        if action in ['add', 'remove'] and learning_rate < lr_threshold:
-            print(f"Warning: Cannot {action} section at LR={learning_rate:.4f} < {lr_threshold}")
+        if action in ['add', 'remove'] and learning_rate < STRUCTURAL_EDIT_LR_THRESHOLD:
+            print(f"Warning: Cannot {action} section at LR={learning_rate:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}")
             return {'action': 'skip', 'section_name': section_name, 'reason': 'lr_threshold'}
         
         # Check meta section constraints
@@ -239,9 +239,8 @@ class PromptOptimizer:
             return False
         
         # Check LR threshold for structural operations
-        lr_threshold = 0.6
-        if action in ['add', 'remove'] and learning_rate < lr_threshold:
-            print(f"Validation failed: {action} not allowed at LR={learning_rate:.4f} < {lr_threshold}")
+        if action in ['add', 'remove'] and learning_rate < STRUCTURAL_EDIT_LR_THRESHOLD:
+            print(f"Validation failed: {action} not allowed at LR={learning_rate:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}")
             return False
         
         # For edit/add actions, check content is not empty
