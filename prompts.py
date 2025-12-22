@@ -42,7 +42,7 @@ GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE = """你是一个元优化器，为评分p
 {well_aligned_samples}
 
 当前学习率: {current_lr}
-结构编辑阈值: 0.6 (STRUCTURAL_EDIT_LR_THRESHOLD)
+结构编辑阈值: {structural_lr_threshold} (STRUCTURAL_EDIT_LR_THRESHOLD)
 
 === 任务：输出JSON格式的多section优化指导 ===
 

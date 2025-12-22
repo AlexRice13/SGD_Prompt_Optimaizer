@@ -7,7 +7,7 @@ based on simple gradients, with modification strength controlled by learning rat
 
 from typing import Callable, Dict, List, Optional
 from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
-from constants import STRUCTURAL_EDIT_LR_THRESHOLD
+from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
 
 
 class PromptOptimizer:
@@ -75,7 +75,7 @@ class PromptOptimizer:
             return {'action': 'skip', 'section_name': section_name, 'reason': 'invalid_action'}
         
         # Check LR threshold for structural changes
-        if action in ['add', 'remove'] and learning_rate < STRUCTURAL_EDIT_LR_THRESHOLD:
+        if action in ['add', 'remove'] and not can_perform_structural_edit(learning_rate):
             print(f"Warning: Cannot {action} section at LR={learning_rate:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}")
             return {'action': 'skip', 'section_name': section_name, 'reason': 'lr_threshold'}
         
@@ -144,9 +144,9 @@ class PromptOptimizer:
         else:
             print(f"\n=== Optimizer LLM Output - {action} {section_name} ===")
             print(f"Total length: {len(llm_output)} characters")
-            print(f"First 300 chars:\n{llm_output[:300]}")
-            if len(llm_output) > 300:
-                print(f"Last 200 chars:\n{llm_output[-200:]}")
+            print(f"First 500 chars:\n{llm_output[:500]}")
+            if len(llm_output) > 500:
+                print(f"Last 500 chars:\n{llm_output[-500:]}")
             print("=" * 50)
         
         return {
@@ -239,7 +239,7 @@ class PromptOptimizer:
             return False
         
         # Check LR threshold for structural operations
-        if action in ['add', 'remove'] and learning_rate < STRUCTURAL_EDIT_LR_THRESHOLD:
+        if action in ['add', 'remove'] and not can_perform_structural_edit(learning_rate):
             print(f"Validation failed: {action} not allowed at LR={learning_rate:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}")
             return False
         

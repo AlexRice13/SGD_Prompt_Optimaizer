@@ -17,7 +17,7 @@ from .version_control import VersionControl
 from .trainer import SGDPromptTrainer
 from .dataset_loader import DatasetLoader
 from .openai_llm import OpenAILLM, create_openai_llm_functions
-from .constants import STRUCTURAL_EDIT_LR_THRESHOLD
+from .constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
 
 __version__ = "1.0.0"
 
@@ -37,4 +37,5 @@ __all__ = [
     "OpenAILLM",
     "create_openai_llm_functions",
     "STRUCTURAL_EDIT_LR_THRESHOLD",
+    "can_perform_structural_edit",
 ]

@@ -10,7 +10,7 @@ import numpy as np
 import json
 import re
 from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE, format_samples_category
-from constants import STRUCTURAL_EDIT_LR_THRESHOLD
+from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
 
 
 def extract_json_from_text(text: str) -> str:
@@ -246,7 +246,8 @@ class GradientAgent:
             overestimated_samples=overestimated_samples,
             underestimated_samples=underestimated_samples,
             well_aligned_samples=well_aligned_samples,
-            current_lr=f"{current_lr:.4f}"
+            current_lr=f"{current_lr:.4f}",
+            structural_lr_threshold=f"{STRUCTURAL_EDIT_LR_THRESHOLD:.1f}"
         )
 
         # Call LLM to get gradient with multiple modifications
@@ -295,7 +296,7 @@ class GradientAgent:
                     continue
                 
                 # Check LR threshold for structural changes
-                if action in ['add', 'remove'] and current_lr < STRUCTURAL_EDIT_LR_THRESHOLD:
+                if action in ['add', 'remove'] and not can_perform_structural_edit(current_lr):
                     print(f"Warning: Cannot {action} section at LR={current_lr:.4f} < {STRUCTURAL_EDIT_LR_THRESHOLD}, skipping")
                     continue
                 
