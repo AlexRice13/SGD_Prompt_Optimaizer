@@ -232,7 +232,7 @@ def main():
         dataset_path, val_split=0.2
     )
     
-    # Configure trainer (do this first to get max_tokens)
+    # Configure trainer
     print("\n3. Configuring trainer...")
     config = {
         'max_steps': int(os.environ.get("MAX_STEPS", "10")),
@@ -244,7 +244,6 @@ def main():
         'logging_steps': int(os.environ.get("LOGGING_STEPS", "1")),  # Log every N steps (TRL-style)
         'eval_steps': int(os.environ.get("EVAL_STEPS", "1")),        # Evaluate every N steps (TRL-style)
         'max_workers': int(os.environ.get("MAX_WORKERS", "10")),     # Concurrent LLM calls
-        'max_tokens': int(os.environ.get("MAX_TOKENS", "16000")),    # Max output tokens (dynamically adjusted)
         'enable_version_control': os.environ.get("ENABLE_VERSION_CONTROL", "false").lower() == "true",
     }
     
@@ -252,21 +251,19 @@ def main():
     for key, value in config.items():
         print(f"  {key}: {value}")
     
-    # Setup LLM functions (using max_tokens from config)
+    # Setup LLM functions
     print("\n4. Setting up LLM functions...")
     if use_openai:
         print("Using OpenAI API")
         model = os.environ.get("OPENAI_MODEL", "gpt-4")
         print(f"Model: {model}")
-        print(f"Max tokens: {config['max_tokens']} (dynamically adjusted based on input)")
         
         try:
             judge_fn, gradient_fn, optimizer_fn = create_openai_llm_functions(
                 model=model,
                 judge_temperature=0.3,
                 gradient_temperature=0.7,
-                optimizer_temperature=0.5,
-                max_tokens=config['max_tokens']  # Pass max_tokens from config to all three LLM functions
+                optimizer_temperature=0.5
             )
             print("OpenAI functions created successfully")
         except Exception as e:

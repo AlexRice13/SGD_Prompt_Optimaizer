@@ -103,8 +103,6 @@ class SGDPromptTrainer:
             'eval_steps': 1,     # Evaluate every N steps (TRL-style)
             'max_workers': 10,   # Max concurrent threads for LLM calls
             'debug': False,  # Enable full LLM output logging for debugging
-            # Note: max_tokens should be set via config or MAX_TOKENS env variable
-            # No hardcoded default here to ensure user configuration is respected
         }
         
         for key, value in defaults.items():
