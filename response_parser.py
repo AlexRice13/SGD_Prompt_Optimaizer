@@ -132,8 +132,10 @@ def get_safe_response_content(content: Optional[str],
     
     # Both are None/empty, use fallback
     if warn:
+        # Safe string conversion for warning message
+        fallback_preview = str(fallback_value)[:50] if fallback_value else ""
         warnings.warn(
-            f"LLM returned None or empty response. Using fallback value: '{fallback_value[:50]}...'",
+            f"LLM returned None or empty response. Using fallback value: '{fallback_preview}...'",
             UserWarning
         )
     
