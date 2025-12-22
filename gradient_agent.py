@@ -191,11 +191,12 @@ class GradientAgent:
                                       responses: List[str],
                                       current_lr: float) -> Dict:
         """
-        Construct simple gradient with optimization direction and section to optimize.
+        Construct gradient with multiple section modifications.
         
-        Simplified version that outputs only the essential information:
-        - opti_direction: Abstract optimization direction as a string
-        - section_to_opti: Which section to optimize
+        Outputs a list of modifications, each containing:
+        - action: "edit", "add", or "remove"
+        - section_name: Which section to operate on
+        - opti_direction: Optimization direction (for edit/add actions)
         
         Args:
             current_prompt: Current JudgePrompt text
@@ -209,7 +210,7 @@ class GradientAgent:
             current_lr: Current learning rate
             
         Returns:
-            Simple gradient dictionary with opti_direction and section_to_opti
+            Gradient dictionary with list of modifications
         """
         # Build sample content strings for LLM context using centralized formatter
         overestimated_samples = format_samples_category(
@@ -247,7 +248,7 @@ class GradientAgent:
             current_lr=f"{current_lr:.4f}"
         )
 
-        # Call LLM to get simple output
+        # Call LLM to get gradient with multiple modifications
         llm_output = self.llm_fn(gradient_prompt)
         
         # Parse JSON (with error handling)
@@ -265,23 +266,75 @@ class GradientAgent:
             # Remove trailing commas before closing braces/brackets
             json_text = re.sub(r',(\s*[}\]])', r'\1', json_text)
             
-            simple_gradient = json.loads(json_text)
+            gradient_result = json.loads(json_text)
             
-            # Validate simple schema
-            if 'opti_direction' not in simple_gradient or 'section_to_opti' not in simple_gradient:
-                raise ValueError("Missing required fields: opti_direction and/or section_to_opti")
+            # Validate schema - should have modifications array
+            if 'modifications' not in gradient_result:
+                raise ValueError("Missing required field: modifications")
             
-            return simple_gradient
+            modifications = gradient_result['modifications']
+            if not isinstance(modifications, list):
+                raise ValueError("modifications must be a list")
+            
+            # Validate and filter modifications based on LR threshold
+            validated_modifications = []
+            lr_threshold = 0.6
+            
+            for mod in modifications:
+                # Validate required fields
+                if 'action' not in mod or 'section_name' not in mod:
+                    print(f"Warning: Skipping modification with missing action or section_name: {mod}")
+                    continue
+                
+                action = mod['action']
+                section_name = mod['section_name']
+                
+                # Validate action type
+                if action not in ['edit', 'add', 'remove']:
+                    print(f"Warning: Invalid action '{action}', skipping")
+                    continue
+                
+                # Check LR threshold for structural changes
+                if action in ['add', 'remove'] and current_lr < lr_threshold:
+                    print(f"Warning: Cannot {action} section at LR={current_lr:.4f} < {lr_threshold}, skipping")
+                    continue
+                
+                # Check meta section constraint
+                if action == 'edit' and section_name in meta_sections:
+                    print(f"Warning: Cannot edit meta section '{section_name}', skipping")
+                    continue
+                
+                if action == 'remove' and section_name in meta_sections:
+                    print(f"Warning: Cannot remove meta section '{section_name}', skipping")
+                    continue
+                
+                if action == 'add' and section_name in meta_sections:
+                    print(f"Warning: Cannot add section with meta section name '{section_name}', skipping")
+                    continue
+                
+                # Validate opti_direction for edit/add actions
+                if action in ['edit', 'add'] and 'opti_direction' not in mod:
+                    print(f"Warning: Missing opti_direction for {action} action, skipping")
+                    continue
+                
+                validated_modifications.append(mod)
+            
+            # If no valid modifications, return fallback
+            if not validated_modifications:
+                print("Warning: No valid modifications after validation, using fallback")
+                return self._get_fallback_gradient(editable_sections, statistics, current_lr)
+            
+            return {'modifications': validated_modifications}
             
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # Fallback to default structure if parsing fails
-            print(f"Warning: Failed to parse simple gradient: {e}")
+            print(f"Warning: Failed to parse gradient: {e}")
             print(f"LLM output preview: {llm_output[:200]}...")
-            return self._get_fallback_simple_gradient(editable_sections, statistics)
+            return self._get_fallback_gradient(editable_sections, statistics, current_lr)
     
-    def _get_fallback_simple_gradient(self, editable_sections: List[str], 
-                                      statistics: Dict) -> Dict:
-        """Generate a safe fallback simple gradient if LLM output fails."""
+    def _get_fallback_gradient(self, editable_sections: List[str], 
+                               statistics: Dict, current_lr: float) -> Dict:
+        """Generate a safe fallback gradient if LLM output fails."""
         # Determine primary error mode and direction
         mean_error = statistics['overall']['mean_error']
         if mean_error > 0.1:
@@ -295,8 +348,13 @@ class GradientAgent:
         target_section = editable_sections[0] if editable_sections else "Scoring Criteria"
         
         return {
-            "opti_direction": direction,
-            "section_to_opti": target_section
+            "modifications": [
+                {
+                    "action": "edit",
+                    "section_name": target_section,
+                    "opti_direction": direction
+                }
+            ]
         }
     
     def compute_gradient(self, current_prompt: str,
@@ -307,7 +365,7 @@ class GradientAgent:
                         responses: List[str],
                         current_lr: float) -> Dict:
         """
-        Full gradient computation pipeline - simplified version.
+        Full gradient computation pipeline - multi-section version.
         
         Args:
             current_prompt: Current JudgePrompt text
@@ -319,7 +377,7 @@ class GradientAgent:
             current_lr: Current learning rate
             
         Returns:
-            Dictionary containing simple gradient with opti_direction and section_to_opti
+            Dictionary containing gradient with list of modifications
         """
         # Select samples
         selected_indices = self.select_gradient_samples(judge_scores, human_scores)
@@ -327,8 +385,8 @@ class GradientAgent:
         # Compute aggregated statistics
         statistics = self.compute_statistics(judge_scores, human_scores, selected_indices)
         
-        # Construct simple gradient
-        simple_gradient = self.construct_structured_gradient(
+        # Construct gradient with multiple modifications
+        gradient = self.construct_structured_gradient(
             current_prompt, editable_sections, meta_sections,
             statistics, selected_indices,
             judge_scores, human_scores, responses,
@@ -338,5 +396,5 @@ class GradientAgent:
         return {
             'statistics': statistics,
             'selected_indices': selected_indices,
-            'simple_gradient': simple_gradient
+            'gradient': gradient
         }

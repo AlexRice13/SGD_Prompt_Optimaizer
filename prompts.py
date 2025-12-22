@@ -42,24 +42,43 @@ GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE = """你是一个元优化器，为评分p
 {well_aligned_samples}
 
 当前学习率: {current_lr}
+结构编辑阈值: 0.6
 
-=== 任务：输出简单JSON格式的优化指导 ===
+=== 任务：输出JSON格式的多section优化指导 ===
 
-你必须输出一个简单的JSON对象，只包含两个字段：
+你必须输出一个JSON对象，包含一个modifications数组：
 
 {{
-  "opti_direction": "用中文描述抽象的优化方向，说明应该如何调整评分标准（例如：'使评分标准更严格，减少高估倾向' 或 '放宽评分标准，提高对质量较好回答的评分'）",
-  "section_to_opti": "需要优化的section名称（必须从可编辑sections中选择）"
+  "modifications": [
+    {{
+      "action": "edit",  // 可选值: "edit", "add", "remove"
+      "section_name": "需要操作的section名称",
+      "opti_direction": "用中文描述优化方向（仅当action为edit或add时需要）"
+    }},
+    // 可以包含多个modification对象
+  ]
 }}
+
+=== 动作类型说明 ===
+- "edit": 修改已有的可编辑section的内容
+- "add": 添加一个新的section（仅当学习率 >= 0.6时允许）
+- "remove": 删除一个可编辑section（仅当学习率 >= 0.6时允许）
 
 === 严格约束 ===
 - 只输出上述JSON结构，不要添加任何markdown标记或说明文字
-- opti_direction应该是一句简洁的中文描述，说明优化方向
-- section_to_opti必须精确匹配可编辑sections列表中的某个名称
+- modifications数组可以包含1个或多个修改建议
+- action必须是"edit"、"add"或"remove"之一
+- 当action为"edit"时，section_name必须是可编辑sections中的某个名称
+- 当action为"add"时，section_name是新section的名称（不能与元sections重名）
+- 当action为"remove"时，section_name必须是可编辑sections中的某个名称
+- 当action为"add"或"remove"时，只在当前学习率 >= 0.6时使用
+- 当学习率 < 0.6时，只能使用action="edit"
+- 元sections永远不能被修改、添加到列表或删除
+- opti_direction在action为"edit"或"add"时必须提供
 - JSON中的字符串用双引号
-- 不要在JSON对象的最后一个元素后加逗号
+- 不要在JSON数组或对象的最后一个元素后加逗号
 
-基于统计和样本模式，确定优化方向和目标section。
+基于统计和样本模式，确定优化方向和目标sections。
 直接输出JSON对象。"""
 
 
@@ -202,7 +221,8 @@ OPTIMIZER_SIMPLE_PROMPT_TEMPLATE = """你是一个prompt优化代理。根据优
 {current_prompt}
 
 优化指导：
-- 目标section: {section_to_opti}
+- 动作类型: {action}
+- 目标section: {section_name}
 - 优化方向: {opti_direction}
 - 修改强度: {strength_desc}（基于学习率 {learning_rate}）
 
@@ -210,17 +230,16 @@ OPTIMIZER_SIMPLE_PROMPT_TEMPLATE = """你是一个prompt优化代理。根据优
 - 可编辑sections: {editable_sections}
 - 元sections（不可修改）: {meta_sections}
 
-任务：
-请直接输出修改后的完整section内容。不要使用git patch格式或其他复杂格式。
+任务说明：
+{task_description}
 
 重要规则：
-1. 只修改指定的section: {section_to_opti}
-2. 元sections永远不能被修改
-3. 根据优化方向和修改强度调整内容
-4. 输出应该是section的完整新内容，不是增量修改
-5. 不要添加任何说明文字或格式标记，直接输出新内容
+1. 元sections永远不能被修改
+2. 根据优化方向和修改强度调整内容
+3. 输出应该是section的完整新内容，不是增量修改
+4. 不要添加任何说明文字或格式标记，直接输出新内容
 
-直接输出修改后的section内容："""
+直接输出{output_description}："""
 
 
 # Original complex optimizer prompt (kept for reference, not used in simplified version)

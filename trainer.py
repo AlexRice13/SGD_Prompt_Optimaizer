@@ -219,11 +219,21 @@ class SGDPromptTrainer:
         # Get learning rate
         lr = self.lr_scheduler.get_current_lr()
         
+        # Initialize step info
+        step_info = {
+            'step': self.current_step,
+            'train_loss': total_loss,
+            'mae': mae,
+            'rank_loss': rank_loss,
+            'learning_rate': lr,
+            'modification_valid': False
+        }
+        
         # Get editable and meta sections
         editable_sections = list(self.current_prompt.get_editable_sections())
         meta_sections = list(self.current_prompt.meta_sections)
         
-        # Compute simple gradient
+        # Compute gradient with multiple modifications
         gradient_result = self.gradient_agent.compute_gradient(
             prompt_text,
             editable_sections,
@@ -234,62 +244,88 @@ class SGDPromptTrainer:
             lr
         )
         
-        # Generate modification from simple gradient
-        simple_gradient = gradient_result['simple_gradient']
-        section_to_opti = simple_gradient.get('section_to_opti', '')
+        # Add gradient statistics to step_info
+        step_info['gradient_statistics'] = gradient_result['statistics']
         
-        modification_suggestion = self.optimizer.generate_modification_from_simple_gradient(
-            prompt_text,
-            simple_gradient,
-            lr,
-            editable_sections,
-            meta_sections
-        )
+        # Extract gradient modifications
+        gradient = gradient_result['gradient']
+        modifications = gradient.get('modifications', [])
         
-        # Parse and validate modification
-        new_content = self.optimizer.parse_modification(modification_suggestion, section_to_opti)
+        if not modifications:
+            print("Warning: No modifications in gradient")
+            step_info['modifications_attempted'] = 0
+            step_info['modifications_applied'] = 0
+            return step_info
         
-        step_info = {
-            'step': self.current_step,
-            'train_loss': total_loss,
-            'mae': mae,
-            'rank_loss': rank_loss,
-            'learning_rate': lr,
-            'gradient_statistics': gradient_result['statistics'],
-            'modification_valid': False
-        }
+        # Process each modification
+        applied_modifications = []
         
-        if new_content and section_to_opti:
-            print(f"\n=== Modification Validation ===")
-            print(f"Target section: {section_to_opti}")
-            print(f"Is editable: {section_to_opti in editable_sections}")
-            print(f"Is meta: {section_to_opti in meta_sections}")
+        for i, modification in enumerate(modifications):
+            print(f"\n=== Processing Modification {i+1}/{len(modifications)} ===")
+            print(f"Action: {modification.get('action', 'unknown')}")
+            print(f"Section: {modification.get('section_name', 'unknown')}")
             
-            is_valid = self.optimizer.validate_modification(
-                new_content, section_to_opti, lr, editable_sections, meta_sections
+            # Generate modification result
+            mod_result = self.optimizer.generate_modification_from_gradient(
+                prompt_text,
+                modification,
+                lr,
+                editable_sections,
+                meta_sections
             )
-            print(f"Validation result: {is_valid}")
             
-            if is_valid:
-                # Apply modification
-                print(f"Attempting to update section: {section_to_opti}")
+            # Validate modification
+            is_valid = self.optimizer.validate_modification(
+                mod_result, lr, editable_sections, meta_sections
+            )
+            
+            if not is_valid:
+                print(f"✗ Modification {i+1} validation failed")
+                continue
+            
+            # Parse content if needed
+            action = mod_result.get('action', '')
+            section_name = mod_result.get('section_name', '')
+            
+            if action in ['edit', 'add']:
+                new_content = self.optimizer.parse_modification(mod_result)
+                if not new_content:
+                    print(f"✗ Failed to parse modification {i+1}")
+                    continue
+                mod_result['content'] = new_content
+            
+            # Apply modification
+            success = False
+            if action == 'edit':
+                print(f"Attempting to update section: {section_name}")
                 success = self.current_prompt.update_section(
-                    section_to_opti,
-                    new_content
+                    section_name,
+                    mod_result['content']
                 )
-                print(f"Update success: {success}")
-                
-                if success:
-                    step_info['modification_valid'] = True
-                    step_info['modified_section'] = section_to_opti
-                    step_info['opti_direction'] = simple_gradient.get('opti_direction', '')
-                    print(f"✓ Successfully modified section: {section_to_opti}")
-                else:
-                    print(f"✗ Failed to update section (might be meta): {section_to_opti}")
+            elif action == 'add':
+                print(f"Attempting to add section: {section_name}")
+                success = self.current_prompt.add_section(
+                    section_name,
+                    mod_result['content']
+                )
+            elif action == 'remove':
+                print(f"Attempting to remove section: {section_name}")
+                success = self.current_prompt.remove_section(section_name)
+            
+            if success:
+                applied_modifications.append({
+                    'action': action,
+                    'section_name': section_name,
+                    'opti_direction': modification.get('opti_direction', '')
+                })
+                print(f"✓ Successfully applied {action} on section: {section_name}")
             else:
-                print(f"✗ Modification validation failed")
-        else:
-            print("✗ Failed to parse modification from LLM output")
+                print(f"✗ Failed to apply {action} on section: {section_name}")
+        
+        step_info['modifications_attempted'] = len(modifications)
+        step_info['modifications_applied'] = len(applied_modifications)
+        step_info['applied_modifications'] = applied_modifications
+        step_info['modification_valid'] = len(applied_modifications) > 0
         
         return step_info
     
@@ -390,21 +426,33 @@ class SGDPromptTrainer:
                           f"Kendall τ: {val_metrics['kendall_tau']:.4f})")
                 
                 if step_info['modification_valid']:
-                    print(f"  ✓ Modified section: {step_info['modified_section']}")
+                    applied_mods = step_info.get('applied_modifications', [])
+                    print(f"  ✓ Applied {len(applied_mods)} modification(s):")
+                    for mod in applied_mods:
+                        action = mod.get('action', 'unknown')
+                        section = mod.get('section_name', 'unknown')
+                        print(f"    - {action.upper()}: {section}")
                 else:
-                    print(f"  ✗ No valid modification applied")
+                    attempted = step_info.get('modifications_attempted', 0)
+                    if attempted > 0:
+                        print(f"  ✗ No valid modifications applied (attempted {attempted})")
+                    else:
+                        print(f"  ✗ No modifications generated")
                 print(f"{'='*80}")
             
             # Save checkpoint (only when modification is valid and evaluation is performed)
             if self.version_control and step_info['modification_valid'] and should_eval and val_loss is not None:
                 self.current_prompt.save(self.version_control.prompt_path)
+                # Create summary of applied modifications
+                applied_mods = step_info.get('applied_modifications', [])
+                mod_summary = '; '.join([f"{m['action']}:{m['section_name']}" for m in applied_mods])
                 self.version_control.commit_prompt_update(
                     self.current_step,
                     train_loss,
                     val_loss,
                     val_metrics,
                     str(step_info['gradient_statistics']),
-                    step_info.get('opti_direction', '')
+                    mod_summary
                 )
             
             # Update best prompt (only on evaluation steps when val_loss is available)
