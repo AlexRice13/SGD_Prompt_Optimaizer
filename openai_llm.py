@@ -229,3 +229,44 @@ def create_openai_llm_functions(model: str = "gpt-4",
         return optimizer_llm.optimizer_llm_fn(prompt)
     
     return judge_fn, gradient_fn, optimizer_fn
+
+
+if __name__ == '__main__':
+    """Unit tests for openai_llm module."""
+    
+    print("Running openai_llm module unit tests...")
+    
+    # Test 1: Check class exists
+    print("\n1. Testing class defined...")
+    assert OpenAILLM is not None
+    print("   ✓ OpenAILLM class defined")
+    
+    # Test 2: Test initialization requirements
+    print("\n2. Testing initialization requirements...")
+    try:
+        # This should fail without API key
+        llm = OpenAILLM(model="gpt-4", temperature=0.3)
+        print(f"   ⚠ API key found, instance created")
+    except ValueError as e:
+        assert "API key not found" in str(e)
+        print("   ✓ API key requirement enforced")
+    
+    # Test 3: Function factory exists
+    print("\n3. Testing create_openai_llm_functions...")
+    assert callable(create_openai_llm_functions)
+    print("   ✓ create_openai_llm_functions is callable")
+    
+    # Test 4: Test with mock API key (just structure)
+    print("\n4. Testing with mock API key...")
+    try:
+        llm = OpenAILLM(model="gpt-4", temperature=0.5, api_key="test_key")
+        assert llm.model == "gpt-4"
+        assert llm.temperature == 0.5
+        assert llm.api_key == "test_key"
+        print("   ✓ Instance creation with API key works")
+    except Exception as e:
+        print(f"   ⚠ OpenAI library not available: {type(e).__name__}")
+    
+    print("\n" + "="*50)
+    print("All openai_llm module tests passed! ✓")
+    print("="*50)

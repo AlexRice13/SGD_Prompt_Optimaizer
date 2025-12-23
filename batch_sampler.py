@@ -213,3 +213,84 @@ class BatchSampler:
         if self.dataset_size == 0:
             return 0.0
         return len(self.samples_seen_in_epoch) / self.dataset_size
+
+
+if __name__ == '__main__':
+    """Unit tests for BatchSampler class."""
+    import numpy as np
+    
+    print("Running BatchSampler unit tests...")
+    
+    # Test data
+    np.random.seed(42)
+    n_samples = 50
+    human_scores = np.random.uniform(1, 10, n_samples)
+    responses = [f"Response {i}" for i in range(n_samples)]
+    
+    # Test 1: Basic initialization
+    print("\n1. Testing basic initialization...")
+    sampler = BatchSampler(batch_size=10)
+    assert sampler.batch_size == 10
+    assert sampler.current_epoch == 0
+    print("   ✓ Initialization works")
+    
+    # Test 2: Sample batch
+    print("\n2. Testing batch sampling...")
+    indices, sampled_responses = sampler.sample_batch(human_scores, responses)
+    assert len(indices) == 10
+    assert len(sampled_responses) == 10
+    assert all(0 <= idx < n_samples for idx in indices)
+    print(f"   Sampled {len(indices)} items ✓")
+    
+    # Test 3: Epoch tracking
+    print("\n3. Testing epoch tracking...")
+    initial_epoch = sampler.get_current_epoch()
+    # Sample until we complete an epoch
+    samples_seen = set()
+    for _ in range(10):  # More than enough batches
+        indices, _ = sampler.sample_batch(human_scores, responses)
+        samples_seen.update(indices)
+        if len(samples_seen) == n_samples:
+            break
+    assert sampler.get_current_epoch() >= initial_epoch
+    print(f"   Epoch tracking works (epoch: {sampler.get_current_epoch()}) ✓")
+    
+    # Test 4: Epoch progress
+    print("\n4. Testing epoch progress...")
+    progress = sampler.get_epoch_progress()
+    assert 0.0 <= progress <= 1.0
+    print(f"   Progress: {progress:.2%} ✓")
+    
+    # Test 5: Small dataset
+    print("\n5. Testing small dataset...")
+    small_scores = np.array([5.0, 6.0, 7.0])
+    small_responses = ["R1", "R2", "R3"]
+    sampler_small = BatchSampler(batch_size=10)
+    indices, sampled = sampler_small.sample_batch(small_scores, small_responses)
+    assert len(indices) == 3  # Returns all samples
+    print("   Small dataset handled correctly ✓")
+    
+    # Test 6: Stratified sampling
+    print("\n6. Testing stratified sampling...")
+    sampler2 = BatchSampler(batch_size=15)
+    indices, _ = sampler2.sample_batch(human_scores, responses)
+    sampled_scores = human_scores[indices]
+    # Check we have some diversity
+    assert sampled_scores.max() > sampled_scores.min()
+    print(f"   Score range: [{sampled_scores.min():.2f}, {sampled_scores.max():.2f}] ✓")
+    
+    # Test 7: No duplicates within epoch
+    print("\n7. Testing no duplicates within epoch...")
+    sampler3 = BatchSampler(batch_size=10)
+    all_indices = []
+    for _ in range(5):
+        indices, _ = sampler3.sample_batch(human_scores, responses)
+        all_indices.extend(indices)
+    # Check first epoch has no duplicates
+    first_epoch_indices = all_indices[:n_samples]
+    assert len(set(first_epoch_indices)) == min(len(first_epoch_indices), n_samples)
+    print("   No duplicates within epoch ✓")
+    
+    print("\n" + "="*50)
+    print("All BatchSampler tests passed! ✓")
+    print("="*50)

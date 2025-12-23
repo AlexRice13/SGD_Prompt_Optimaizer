@@ -171,3 +171,84 @@ class LossFunctions:
         total_loss = self.alpha * mae + self.beta * rank_loss
         
         return total_loss, mae, rank_loss
+
+
+if __name__ == '__main__':
+    """Unit tests for LossFunctions class."""
+    import numpy as np
+    
+    print("Running LossFunctions unit tests...")
+    
+    # Test data
+    judge_scores = np.array([8.0, 6.5, 7.0, 9.0, 5.5])
+    human_scores = np.array([7.5, 6.0, 7.5, 8.5, 6.0])
+    
+    # Test 1: MAE loss
+    print("\n1. Testing MAE loss...")
+    mae = LossFunctions.mae_loss(judge_scores, human_scores)
+    expected = np.mean(np.abs(judge_scores - human_scores))
+    assert abs(mae - expected) < 1e-6
+    print(f"   MAE: {mae:.4f} ✓")
+    
+    # Test 2: Huber loss
+    print("\n2. Testing Huber loss...")
+    huber = LossFunctions.huber_loss(judge_scores, human_scores, delta=1.0)
+    assert huber >= 0
+    print(f"   Huber loss: {huber:.4f} ✓")
+    
+    # Test 3: Pairwise ranking loss
+    print("\n3. Testing pairwise ranking loss...")
+    rank_loss = LossFunctions.pairwise_ranking_loss(judge_scores, human_scores)
+    assert rank_loss >= 0
+    print(f"   Pairwise ranking loss: {rank_loss:.4f} ✓")
+    
+    # Test 4: Kendall tau loss
+    print("\n4. Testing Kendall tau loss...")
+    tau_loss = LossFunctions.kendall_tau_loss(judge_scores, human_scores)
+    assert 0 <= tau_loss <= 2.0
+    print(f"   Kendall tau loss: {tau_loss:.4f} ✓")
+    
+    # Test 5: Spearman loss
+    print("\n5. Testing Spearman loss...")
+    spearman_loss = LossFunctions.spearman_loss(judge_scores, human_scores)
+    assert 0 <= spearman_loss <= 2.0
+    print(f"   Spearman loss: {spearman_loss:.4f} ✓")
+    
+    # Test 6: Combined loss
+    print("\n6. Testing combined loss...")
+    loss_fn = LossFunctions(alpha=1.0, beta=1.0)
+    total, mae_comp, rank_comp = loss_fn.compute_loss(judge_scores, human_scores, 'pairwise')
+    assert total >= 0
+    assert mae_comp >= 0
+    assert rank_comp >= 0
+    assert abs(total - (mae_comp + rank_comp)) < 1e-6
+    print(f"   Total: {total:.4f}, MAE: {mae_comp:.4f}, Rank: {rank_comp:.4f} ✓")
+    
+    # Test 7: Different loss types
+    print("\n7. Testing different loss types...")
+    for loss_type in ['pairwise', 'kendall', 'spearman']:
+        total, _, _ = loss_fn.compute_loss(judge_scores, human_scores, loss_type)
+        assert total >= 0
+        print(f"   {loss_type}: {total:.4f} ✓")
+    
+    # Test 8: Edge case - single sample
+    print("\n8. Testing edge cases...")
+    single_judge = np.array([5.0])
+    single_human = np.array([5.5])
+    mae_single = LossFunctions.mae_loss(single_judge, single_human)
+    assert mae_single == 0.5
+    rank_single = LossFunctions.pairwise_ranking_loss(single_judge, single_human)
+    assert rank_single == 0.0
+    print("   Single sample handled correctly ✓")
+    
+    # Test 9: Custom weights
+    print("\n9. Testing custom weights...")
+    loss_fn2 = LossFunctions(alpha=2.0, beta=0.5)
+    total, mae_comp, rank_comp = loss_fn2.compute_loss(judge_scores, human_scores, 'pairwise')
+    expected_total = 2.0 * mae_comp + 0.5 * rank_comp
+    assert abs(total - expected_total) < 1e-6
+    print(f"   Custom weights work correctly ✓")
+    
+    print("\n" + "="*50)
+    print("All LossFunctions tests passed! ✓")
+    print("="*50)

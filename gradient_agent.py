@@ -399,3 +399,50 @@ class GradientAgent:
             'selected_indices': selected_indices,
             'gradient': gradient
         }
+
+
+if __name__ == '__main__':
+    """Unit tests for GradientAgent class."""
+    
+    print("Running GradientAgent unit tests...")
+    
+    # Test 1: Basic initialization
+    print("\n1. Testing basic initialization...")
+    
+    def mock_gradient_llm(prompt):
+        """Mock gradient LLM function."""
+        return '{"modifications": [{"action": "edit", "section_name": "Test", "opti_direction": "Improve"}]}'
+    
+    agent = GradientAgent(mock_gradient_llm, n_samples_per_category=3)
+    assert agent.n_samples_per_category == 3
+    assert agent.llm_fn == mock_gradient_llm
+    print("   ✓ Initialization works")
+    
+    # Test 2: Parse gradient response
+    print("\n2. Testing parse_gradient_response...")
+    valid_json = '{"modifications": [{"action": "edit", "section_name": "S1", "opti_direction": "Better"}]}'
+    parsed = agent.parse_gradient_response(valid_json)
+    assert parsed is not None
+    assert 'modifications' in parsed
+    assert len(parsed['modifications']) == 1
+    print("   ✓ Valid JSON parsing works")
+    
+    # Test 3: Invalid JSON
+    print("\n3. Testing invalid JSON handling...")
+    invalid_json = "Not valid JSON"
+    parsed_invalid = agent.parse_gradient_response(invalid_json)
+    assert parsed_invalid is None
+    print("   ✓ Invalid JSON handled gracefully")
+    
+    # Test 4: Empty modifications
+    print("\n4. Testing empty modifications...")
+    empty_json = '{"modifications": []}'
+    parsed_empty = agent.parse_gradient_response(empty_json)
+    assert parsed_empty is not None
+    assert 'modifications' in parsed_empty
+    assert len(parsed_empty['modifications']) == 0
+    print("   ✓ Empty modifications handled")
+    
+    print("\n" + "="*50)
+    print("All GradientAgent tests passed! ✓")
+    print("="*50)
