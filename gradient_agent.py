@@ -9,8 +9,10 @@ from typing import List, Dict, Tuple, Callable
 import numpy as np
 import json
 import re
+import warnings
 from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE, format_samples_category
 from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
+from response_parser import extract_outside_think_tags
 
 
 def extract_json_from_text(text: str) -> str:
@@ -252,6 +254,27 @@ class GradientAgent:
 
         # Call LLM to get gradient with multiple modifications
         llm_output = self.llm_fn(gradient_prompt)
+        
+        # First check: Handle None or empty response before any processing
+        # This catches cases where LLM completely fails to respond
+        if not llm_output or not llm_output.strip():
+            warnings.warn(
+                "Gradient Agent LLM returned empty response. Using fallback gradient.",
+                UserWarning
+            )
+            return self._get_fallback_gradient(editable_sections, statistics, current_lr)
+        
+        # Extract content outside <think></think> tags for reasoning models
+        llm_output = extract_outside_think_tags(llm_output)
+        
+        # Second check: Handle case where response only contained think tags
+        # This catches reasoning models that put everything inside <think> tags
+        if not llm_output or not llm_output.strip():
+            warnings.warn(
+                "Gradient Agent LLM response was empty after removing think tags. Using fallback gradient.",
+                UserWarning
+            )
+            return self._get_fallback_gradient(editable_sections, statistics, current_lr)
         
         # Parse JSON (with error handling)
         try:
