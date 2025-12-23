@@ -1,3 +1,5 @@
+帮我做好以下的框架：
+
 ## 目标
 
 使用 **SGD 算法思想** 优化 RLAIF 中的 **JudgePrompt**，使 Judge LLM 对被训练模型 rollout 响应的打分：
