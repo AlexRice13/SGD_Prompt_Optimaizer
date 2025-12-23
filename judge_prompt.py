@@ -126,7 +126,7 @@ class JudgePrompt:
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
         return {
-            "sections": self.sections,
+            "sections": self.sections.copy(),
             "meta_sections": list(self.meta_sections)
         }
     
