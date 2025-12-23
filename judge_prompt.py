@@ -124,7 +124,12 @@ class JudgePrompt:
         return section_name in self.sections and section_name not in self.meta_sections
     
     def to_dict(self) -> dict:
-        """Serialize to dictionary."""
+        """Serialize to dictionary.
+        
+        Returns a dictionary with a shallow copy of sections to prevent
+        external code from modifying the internal state. This is sufficient
+        since section values are immutable strings.
+        """
         return {
             "sections": self.sections.copy(),
             "meta_sections": list(self.meta_sections)
