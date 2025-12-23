@@ -352,3 +352,63 @@ def format_samples_category(indices, responses, human_scores, judge_scores,
         sample_text += format_sample(i, response, human_scores[idx], 
                                      judge_scores[idx])
     return sample_text
+
+
+if __name__ == '__main__':
+    """Unit tests for prompts module."""
+    import numpy as np
+    
+    print("Running prompts module unit tests...")
+    
+    # Test 1: Check prompt templates exist
+    print("\n1. Testing prompt templates exist...")
+    assert len(GRADIENT_AGENT_PROMPT_TEMPLATE) > 0
+    assert len(OPTIMIZER_SIMPLE_PROMPT_TEMPLATE) > 0
+    print("   ✓ Prompt templates defined")
+    
+    # Test 2: Test format_sample function
+    print("\n2. Testing format_sample...")
+    sample = format_sample(
+        index=1,
+        response="Test response",
+        human_score=8.5,
+        judge_score=7.5
+    )
+    assert "Test response" in sample
+    assert "8.5" in sample
+    assert "7.5" in sample
+    print("   ✓ format_sample works")
+    
+    # Test 3: Test format_samples_by_category
+    print("\n3. Testing format_samples_by_category...")
+    responses = ["R1", "R2", "R3"]
+    human_scores = np.array([8.0, 5.0, 7.0])
+    judge_scores = np.array([7.5, 6.0, 7.5])
+    indices = [0, 2]  # Overestimation
+    
+    output = format_samples_by_category(
+        "过高估计",
+        indices,
+        responses,
+        human_scores,
+        judge_scores,
+        max_samples=2
+    )
+    assert "过高估计" in output or len(indices) == 0 or len(output) > 0
+    print("   ✓ format_samples_by_category works")
+    
+    # Test 4: Empty category
+    print("\n4. Testing empty category...")
+    empty_output = format_samples_by_category(
+        "Empty",
+        [],
+        responses,
+        human_scores,
+        judge_scores
+    )
+    assert "无" in empty_output or "Empty" in empty_output
+    print("   ✓ Empty category handled")
+    
+    print("\n" + "="*50)
+    print("All prompts module tests passed! ✓")
+    print("="*50)

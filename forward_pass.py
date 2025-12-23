@@ -99,3 +99,68 @@ class ForwardPass:
     def get_variances_array(self, score_results: List[Dict[str, float]]) -> np.ndarray:
         """Extract variances as numpy array."""
         return np.array([result['variance'] for result in score_results])
+
+
+if __name__ == '__main__':
+    """Unit tests for ForwardPass class."""
+    import numpy as np
+    
+    print("Running ForwardPass unit tests...")
+    
+    # Test 1: Basic initialization
+    print("\n1. Testing basic initialization...")
+    
+    def mock_judge_fn(prompt, response):
+        """Mock judge function that returns a deterministic score."""
+        return 5.0 + len(response) * 0.1
+    
+    forward_pass = ForwardPass(mock_judge_fn, n_consistency_samples=3)
+    assert forward_pass.n_consistency_samples == 3
+    print("   ✓ Initialization works")
+    
+    # Test 2: Score single response
+    print("\n2. Testing score_response...")
+    prompt = "Test prompt"
+    response = "Test response"
+    result = forward_pass.score_response(prompt, response)
+    
+    assert 'mean_score' in result
+    assert 'variance' in result
+    assert 'all_scores' in result
+    assert len(result['all_scores']) == 3
+    print(f"   Mean: {result['mean_score']:.2f}, Variance: {result['variance']:.4f} ✓")
+    
+    # Test 3: Score batch
+    print("\n3. Testing score_batch...")
+    responses = ["Response 1", "Response 2", "Response 3"]
+    results = forward_pass.score_batch(prompt, responses)
+    
+    assert len(results) == 3
+    assert all('mean_score' in r for r in results)
+    print(f"   Scored {len(results)} responses ✓")
+    
+    # Test 4: Get scores array
+    print("\n4. Testing get_scores_array...")
+    scores = forward_pass.get_scores_array(results)
+    assert isinstance(scores, np.ndarray)
+    assert len(scores) == 3
+    print(f"   Scores: {scores} ✓")
+    
+    # Test 5: Get variances array
+    print("\n5. Testing get_variances_array...")
+    variances = forward_pass.get_variances_array(results)
+    assert isinstance(variances, np.ndarray)
+    assert len(variances) == 3
+    assert all(v >= 0 for v in variances)
+    print(f"   Variances: {variances} ✓")
+    
+    # Test 6: Single consistency sample
+    print("\n6. Testing n_consistency_samples=1...")
+    fp_single = ForwardPass(mock_judge_fn, n_consistency_samples=1)
+    result_single = fp_single.score_response(prompt, response)
+    assert result_single['variance'] == 0.0  # No variance with single sample
+    print("   ✓ Single sample works (variance=0)")
+    
+    print("\n" + "="*50)
+    print("All ForwardPass tests passed! ✓")
+    print("="*50)

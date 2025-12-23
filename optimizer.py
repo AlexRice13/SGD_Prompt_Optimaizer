@@ -250,3 +250,71 @@ class PromptOptimizer:
                 return False
         
         return True
+
+
+if __name__ == '__main__':
+    """Unit tests for PromptOptimizer class."""
+    
+    print("Running PromptOptimizer unit tests...")
+    
+    # Test 1: Basic initialization
+    print("\n1. Testing basic initialization...")
+    
+    def mock_llm_fn(prompt):
+        """Mock LLM function."""
+        return "Mock optimizer output: new content here"
+    
+    optimizer = PromptOptimizer(mock_llm_fn, initial_lr=0.1)
+    assert optimizer.initial_lr == 0.1
+    assert optimizer.llm_fn == mock_llm_fn
+    print("   ✓ Initialization works")
+    
+    # Test 2: Validation - skip action
+    print("\n2. Testing validation - skip action...")
+    result_skip = {'action': 'skip', 'section_name': 'Test', 'reason': 'test'}
+    assert optimizer.validate_modification(result_skip, 0.1, ['S1'], ['M1']) == False
+    print("   ✓ Skip action validation works")
+    
+    # Test 3: Validation - meta section
+    print("\n3. Testing validation - meta section protection...")
+    result_meta = {'action': 'edit', 'section_name': 'MetaSection', 'content': 'New'}
+    assert optimizer.validate_modification(result_meta, 0.1, ['S1'], ['MetaSection']) == False
+    print("   ✓ Meta section protection works")
+    
+    # Test 4: Validation - empty content
+    print("\n4. Testing validation - empty content...")
+    result_empty = {'action': 'edit', 'section_name': 'S1', 'content': ''}
+    assert optimizer.validate_modification(result_empty, 0.1, ['S1'], []) == False
+    print("   ✓ Empty content validation works")
+    
+    # Test 5: Validation - valid edit
+    print("\n5. Testing validation - valid modification...")
+    result_valid = {'action': 'edit', 'section_name': 'S1', 'content': 'Valid content'}
+    assert optimizer.validate_modification(result_valid, 0.1, ['S1'], []) == True
+    print("   ✓ Valid modification passes")
+    
+    # Test 6: Parse modification
+    print("\n6. Testing parse_modification...")
+    result_with_content = {
+        'action': 'edit',
+        'section_name': 'S1',
+        'content': 'Test content'
+    }
+    parsed = optimizer.parse_modification(result_with_content)
+    assert parsed == 'Test content'
+    print("   ✓ Parse modification works")
+    
+    # Test 7: Parse with NO_MODIFICATION
+    print("\n7. Testing parse with NO_MODIFICATION...")
+    result_no_mod = {
+        'action': 'edit',
+        'section_name': 'S1',
+        'content': 'NO_MODIFICATION'
+    }
+    parsed_none = optimizer.parse_modification(result_no_mod)
+    assert parsed_none is None
+    print("   ✓ NO_MODIFICATION handled correctly")
+    
+    print("\n" + "="*50)
+    print("All PromptOptimizer tests passed! ✓")
+    print("="*50)
