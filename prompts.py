@@ -58,6 +58,7 @@ GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE = """你是一个元优化器，为评分p
 - 避免连续多次只修改同一个section
 - 考虑sections之间的协同效应
 - 当存在多个可编辑sections时，应该分散优化目标
+{diversity_hint}
 
 当前学习率: {current_lr}
 结构编辑阈值: {structural_lr_threshold} (STRUCTURAL_EDIT_LR_THRESHOLD)

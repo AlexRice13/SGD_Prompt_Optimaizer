@@ -327,6 +327,11 @@ class SGDPromptTrainer:
         step_info['applied_modifications'] = applied_modifications
         step_info['modification_valid'] = len(applied_modifications) > 0
         
+        # Update gradient agent's modification history for diversity tracking
+        if applied_modifications:
+            modified_sections = [mod['section_name'] for mod in applied_modifications]
+            self.gradient_agent.update_modification_history(modified_sections)
+        
         return step_info
     
     def train(self) -> JudgePrompt:
