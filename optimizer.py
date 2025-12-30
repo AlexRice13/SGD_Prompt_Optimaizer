@@ -117,6 +117,28 @@ class PromptOptimizer:
             task_description = f"请直接输出新增的'{section_name}' section的完整内容。这是一个新section，需要根据优化方向创建。"
             output_description = "新section的内容"
         
+        # Calculate total sections and generate simplification hint
+        total_sections = len(editable_sections) + len(meta_sections)
+        
+        # Simplification pressure: Occam's Razor principle
+        if total_sections > 5:
+            simplification_hint = (
+                f"**注意：当前有{total_sections}个sections（已超过建议的5个）**\n"
+                "根据奥卡姆剃刀原则（Occam's Razor）：\n"
+                "- 优先考虑**合并相似或重复的内容**到现有sections中，而不是添加新内容\n"
+                "- 简洁明了的prompt通常比冗长复杂的prompt更有效\n"
+                "- 避免不必要的复杂性和冗余"
+            )
+        elif action == 'add':
+            simplification_hint = (
+                "在添加新section时，请确保：\n"
+                "- 新内容无法合并到现有sections中\n"
+                "- 新section提供独特且必要的价值\n"
+                "- 遵循简洁性原则"
+            )
+        else:
+            simplification_hint = "保持prompt简洁明了，遵循奥卡姆剃刀原则。"
+        
         # Use centralized prompt template with dynamic fields
         from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
         optimizer_prompt = OPTIMIZER_SIMPLE_PROMPT_TEMPLATE.format(
@@ -128,6 +150,8 @@ class PromptOptimizer:
             strength_desc=strength_desc,
             editable_sections=', '.join(editable_sections),
             meta_sections=', '.join(meta_sections),
+            total_sections=total_sections,
+            simplification_hint=simplification_hint,
             task_description=task_description,
             output_description=output_description
         )
