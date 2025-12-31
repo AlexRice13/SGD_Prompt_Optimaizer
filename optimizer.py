@@ -28,7 +28,8 @@ class PromptOptimizer:
     
     def __init__(self, llm_fn: Callable[[str], str], 
                  initial_lr: float = 0.1,
-                 debug: bool = False):
+                 debug: bool = False,
+                 simplification_threshold: int = 5):
         """
         Initialize optimizer.
         
@@ -36,6 +37,7 @@ class PromptOptimizer:
             llm_fn: Function that takes a prompt and returns text
             initial_lr: Initial learning rate to compute modification strength
             debug: Enable full LLM output logging for debugging (default: False)
+            simplification_threshold: Max recommended section count before simplification hints (default: 5)
         
         Raises:
             ValueError: If initial_lr <= 0
@@ -46,6 +48,7 @@ class PromptOptimizer:
         self.llm_fn = llm_fn
         self.initial_lr = initial_lr
         self.debug = debug
+        self.simplification_threshold = simplification_threshold
     
     def generate_modification_from_gradient(self, 
                                            current_prompt: str,
@@ -126,9 +129,10 @@ class PromptOptimizer:
         total_sections = len(editable_sections) + len(meta_sections)
         
         # Simplification pressure: Occam's Razor principle
-        if total_sections > 5:
+        if total_sections > self.simplification_threshold:
             simplification_hint = SIMPLIFICATION_HINT_MANY_SECTIONS.format(
-                total_sections=total_sections
+                total_sections=total_sections,
+                threshold=self.simplification_threshold
             )
         elif action == 'add':
             simplification_hint = SIMPLIFICATION_HINT_ADD_SECTION

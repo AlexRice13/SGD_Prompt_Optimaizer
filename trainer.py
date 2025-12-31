@@ -103,6 +103,7 @@ class SGDPromptTrainer:
             'eval_steps': 1,     # Evaluate every N steps (TRL-style)
             'max_workers': 10,   # Max concurrent threads for LLM calls
             'debug': False,  # Enable full LLM output logging for debugging
+            'simplification_threshold': 5,  # Recommended max section count for simplification hints
         }
         
         for key, value in defaults.items():
@@ -134,7 +135,8 @@ class SGDPromptTrainer:
         self.optimizer = PromptOptimizer(
             self.optimizer_llm_fn,
             initial_lr=self.config['initial_lr'],
-            debug=self.config['debug']
+            debug=self.config['debug'],
+            simplification_threshold=self.config['simplification_threshold']
         )
         
         # Learning rate scheduler

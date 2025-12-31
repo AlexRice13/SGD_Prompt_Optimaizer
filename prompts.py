@@ -342,7 +342,7 @@ RATIONALE: [简要说明如何响应压力信号]
 # ============================================================================
 
 # Simplification hint when section count exceeds threshold
-SIMPLIFICATION_HINT_MANY_SECTIONS = """**注意：当前有{total_sections}个sections（已超过建议的5个）**
+SIMPLIFICATION_HINT_MANY_SECTIONS = """**注意：当前有{total_sections}个sections（已超过建议的{threshold}个）**
 根据奥卡姆剃刀原则（Occam's Razor）：
 - 优先考虑**合并相似或重复的内容**到现有sections中，而不是添加新内容
 - 简洁明了的prompt通常比冗长复杂的prompt更有效
