@@ -33,13 +33,32 @@ GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE = """你是一个元优化器，为评分p
 2. 低估（AI<人工-）: {underestimated_count}个, 均误差{underestimated_mean_error}
 3. 对齐: {well_aligned_count}个, MAE={well_aligned_mae}
 
-参考样本（仅供模式分析，勿在输出中引用）：
+参考样本（仅供模式分析，严禁在输出中引用或复制）：
 高估样本：
 {overestimated_samples}
 低估样本：
 {underestimated_samples}
 对齐样本：
 {well_aligned_samples}
+
+=== 反记忆约束 (Anti-Memorization) ===
+**严格禁止**：
+- 在opti_direction中直接引用、复制或重述任何样本的具体内容
+- 创建专门记录训练样本的section（如"样本记录"、"数据集特征"等）
+- 将样本中的具体词语、短语或模式硬编码到prompt中
+
+**必须遵守**：
+- 只能从样本中提取**通用的语义原则**和**抽象的评分模式**
+- 使用概括性描述，而非具体案例
+- 优化方向应该适用于未见过的新样本，而不仅仅是训练集
+
+=== 多维度优化 (Optimization Diversity) ===
+**优化策略**：
+- 分析**至少2个不同的sections**来解决误差问题
+- 避免连续多次只修改同一个section
+- 考虑sections之间的协同效应
+- 当存在多个可编辑sections时，应该分散优化目标
+{diversity_hint}
 
 当前学习率: {current_lr}
 结构编辑阈值: {structural_lr_threshold} (STRUCTURAL_EDIT_LR_THRESHOLD)
@@ -66,7 +85,7 @@ GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE = """你是一个元优化器，为评分p
 
 === 严格约束 ===
 - 只输出上述JSON结构，不要添加任何markdown标记或说明文字
-- modifications数组可以包含1个或多个修改建议
+- modifications数组**建议包含2个或多个**修改建议以实现多维度优化
 - action必须是"edit"、"add"或"remove"之一
 - 当action为"edit"时，section_name必须是可编辑sections中的某个名称
 - 当action为"add"时，section_name是新section的名称（不能与元sections重名）
@@ -75,6 +94,7 @@ GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE = """你是一个元优化器，为评分p
 - 当学习率 < 0.6时，只能使用action="edit"
 - 元sections永远不能被修改、添加到列表或删除
 - opti_direction在action为"edit"或"add"时必须提供
+- opti_direction必须是**通用的抽象原则**，不能包含样本的具体内容
 - JSON中的字符串用双引号
 - 不要在JSON数组或对象的最后一个元素后加逗号
 
@@ -229,6 +249,10 @@ OPTIMIZER_SIMPLE_PROMPT_TEMPLATE = """你是一个prompt优化代理。根据优
 约束：
 - 可编辑sections: {editable_sections}
 - 元sections（不可修改）: {meta_sections}
+- 当前sections总数: {total_sections}
+
+=== 简化压力 (Occam's Razor) ===
+{simplification_hint}
 
 任务说明：
 {task_description}
@@ -238,6 +262,17 @@ OPTIMIZER_SIMPLE_PROMPT_TEMPLATE = """你是一个prompt优化代理。根据优
 2. 根据优化方向和修改强度调整内容
 3. 输出应该是section的完整新内容，不是增量修改
 4. 不要添加任何说明文字或格式标记，直接输出新内容
+
+=== 反记忆约束 (Anti-Memorization) ===
+**严格禁止在section内容中**：
+- 直接引用、复制或重述训练样本的具体内容
+- 使用样本中的具体词语、短语或例子
+- 创建针对特定样本特征的规则
+
+**必须确保**：
+- Section内容是**通用的、抽象的原则**
+- 适用于未见过的新样本，而不仅仅是训练数据
+- 使用概括性的评分指导，而非具体案例
 
 直接输出{output_description}："""
 
@@ -300,6 +335,38 @@ RATIONALE: [简要说明如何响应压力信号]
 2. 不要添加markdown代码块标记或其他格式
 3. 每个字段标签后必须换行
 4. 直接输出上述格式，不要添加任何说明文字"""
+
+
+# ============================================================================
+# 简化提示模板（Simplification Hints）
+# ============================================================================
+
+# Simplification hint when section count exceeds threshold
+SIMPLIFICATION_HINT_MANY_SECTIONS = """**注意：当前有{total_sections}个sections（已超过建议的{threshold}个）**
+根据奥卡姆剃刀原则（Occam's Razor）：
+- 优先考虑**合并相似或重复的内容**到现有sections中，而不是添加新内容
+- 简洁明了的prompt通常比冗长复杂的prompt更有效
+- 避免不必要的复杂性和冗余"""
+
+# Simplification hint when adding new section
+SIMPLIFICATION_HINT_ADD_SECTION = """在添加新section时，请确保：
+- 新内容无法合并到现有sections中
+- 新section提供独特且必要的价值
+- 遵循简洁性原则"""
+
+# Default simplification hint
+SIMPLIFICATION_HINT_DEFAULT = "保持prompt简洁明了，遵循奥卡姆剃刀原则。"
+
+
+# ============================================================================
+# 多样性提示模板（Diversity Hints）
+# ============================================================================
+
+# Diversity hint template for frequently modified sections
+DIVERSITY_HINT_TEMPLATE = """
+**多样性提示（Diversity Hint）**：
+以下sections在最近几步中已被频繁修改：{sections_str}
+建议考虑优化其他sections以实现多维度改进，避免局部最优。"""
 
 
 # ============================================================================
@@ -369,42 +436,42 @@ if __name__ == '__main__':
     # Test 2: Test format_sample function
     print("\n2. Testing format_sample...")
     sample = format_sample(
-        index=1,
+        idx=1,
         response="Test response",
         human_score=8.5,
-        judge_score=7.5
+        ai_score=7.5
     )
     assert "Test response" in sample
     assert "8.5" in sample
     assert "7.5" in sample
     print("   ✓ format_sample works")
     
-    # Test 3: Test format_samples_by_category
-    print("\n3. Testing format_samples_by_category...")
+    # Test 3: Test format_samples_category
+    print("\n3. Testing format_samples_category...")
     responses = ["R1", "R2", "R3"]
     human_scores = np.array([8.0, 5.0, 7.0])
     judge_scores = np.array([7.5, 6.0, 7.5])
-    indices = [0, 2]  # Overestimation
+    indices = np.array([0, 2])  # Overestimation
     
-    output = format_samples_by_category(
-        "过高估计",
+    output = format_samples_category(
         indices,
         responses,
         human_scores,
         judge_scores,
+        "过高估计",
         max_samples=2
     )
     assert "过高估计" in output or len(indices) == 0 or len(output) > 0
-    print("   ✓ format_samples_by_category works")
+    print("   ✓ format_samples_category works")
     
     # Test 4: Empty category
     print("\n4. Testing empty category...")
-    empty_output = format_samples_by_category(
-        "Empty",
-        [],
+    empty_output = format_samples_category(
+        np.array([]),
         responses,
         human_scores,
-        judge_scores
+        judge_scores,
+        "Empty"
     )
     assert "无" in empty_output or "Empty" in empty_output
     print("   ✓ Empty category handled")

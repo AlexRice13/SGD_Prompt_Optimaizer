@@ -103,6 +103,7 @@ class SGDPromptTrainer:
             'eval_steps': 1,     # Evaluate every N steps (TRL-style)
             'max_workers': 10,   # Max concurrent threads for LLM calls
             'debug': False,  # Enable full LLM output logging for debugging
+            'simplification_threshold': 5,  # Recommended max section count for simplification hints
         }
         
         for key, value in defaults.items():
@@ -134,7 +135,8 @@ class SGDPromptTrainer:
         self.optimizer = PromptOptimizer(
             self.optimizer_llm_fn,
             initial_lr=self.config['initial_lr'],
-            debug=self.config['debug']
+            debug=self.config['debug'],
+            simplification_threshold=self.config['simplification_threshold']
         )
         
         # Learning rate scheduler
@@ -326,6 +328,11 @@ class SGDPromptTrainer:
         step_info['modifications_applied'] = len(applied_modifications)
         step_info['applied_modifications'] = applied_modifications
         step_info['modification_valid'] = len(applied_modifications) > 0
+        
+        # Update gradient agent's modification history for diversity tracking
+        if applied_modifications:
+            modified_sections = [mod['section_name'] for mod in applied_modifications]
+            self.gradient_agent.update_modification_history(modified_sections)
         
         return step_info
     

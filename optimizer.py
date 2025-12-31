@@ -6,7 +6,12 @@ based on simple gradients, with modification strength controlled by learning rat
 """
 
 from typing import Callable, Dict, List, Optional
-from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
+from prompts import (
+    OPTIMIZER_SIMPLE_PROMPT_TEMPLATE,
+    SIMPLIFICATION_HINT_MANY_SECTIONS,
+    SIMPLIFICATION_HINT_ADD_SECTION,
+    SIMPLIFICATION_HINT_DEFAULT
+)
 from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
 
 
@@ -23,7 +28,8 @@ class PromptOptimizer:
     
     def __init__(self, llm_fn: Callable[[str], str], 
                  initial_lr: float = 0.1,
-                 debug: bool = False):
+                 debug: bool = False,
+                 simplification_threshold: int = 5):
         """
         Initialize optimizer.
         
@@ -31,6 +37,7 @@ class PromptOptimizer:
             llm_fn: Function that takes a prompt and returns text
             initial_lr: Initial learning rate to compute modification strength
             debug: Enable full LLM output logging for debugging (default: False)
+            simplification_threshold: Max recommended section count before simplification hints (default: 5)
         
         Raises:
             ValueError: If initial_lr <= 0
@@ -41,6 +48,7 @@ class PromptOptimizer:
         self.llm_fn = llm_fn
         self.initial_lr = initial_lr
         self.debug = debug
+        self.simplification_threshold = simplification_threshold
     
     def generate_modification_from_gradient(self, 
                                            current_prompt: str,
@@ -117,6 +125,20 @@ class PromptOptimizer:
             task_description = f"请直接输出新增的'{section_name}' section的完整内容。这是一个新section，需要根据优化方向创建。"
             output_description = "新section的内容"
         
+        # Calculate total sections and generate simplification hint using centralized templates
+        total_sections = len(editable_sections) + len(meta_sections)
+        
+        # Simplification pressure: Occam's Razor principle
+        if total_sections > self.simplification_threshold:
+            simplification_hint = SIMPLIFICATION_HINT_MANY_SECTIONS.format(
+                total_sections=total_sections,
+                threshold=self.simplification_threshold
+            )
+        elif action == 'add':
+            simplification_hint = SIMPLIFICATION_HINT_ADD_SECTION
+        else:
+            simplification_hint = SIMPLIFICATION_HINT_DEFAULT
+        
         # Use centralized prompt template with dynamic fields
         from prompts import OPTIMIZER_SIMPLE_PROMPT_TEMPLATE
         optimizer_prompt = OPTIMIZER_SIMPLE_PROMPT_TEMPLATE.format(
@@ -128,6 +150,8 @@ class PromptOptimizer:
             strength_desc=strength_desc,
             editable_sections=', '.join(editable_sections),
             meta_sections=', '.join(meta_sections),
+            total_sections=total_sections,
+            simplification_hint=simplification_hint,
             task_description=task_description,
             output_description=output_description
         )

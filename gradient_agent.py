@@ -9,7 +9,11 @@ from typing import List, Dict, Tuple, Callable
 import numpy as np
 import json
 import re
-from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE, format_samples_category
+from prompts import (
+    GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE,
+    format_samples_category,
+    DIVERSITY_HINT_TEMPLATE
+)
 from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
 
 
@@ -85,6 +89,9 @@ class GradientAgent:
         """
         self.llm_fn = llm_fn
         self.n_samples_per_category = n_samples_per_category
+        # Track recently modified sections for diversity (cooldown mechanism)
+        self.modification_history = []  # List of (step, section_name) tuples
+        self.current_step = 0
     
     def select_gradient_samples(self, judge_scores: np.ndarray, 
                                human_scores: np.ndarray) -> Dict[str, np.ndarray]:
@@ -182,6 +189,64 @@ class GradientAgent:
         
         return stats
     
+    def update_modification_history(self, modified_sections: List[str]):
+        """
+        Update the history of recently modified sections for diversity tracking.
+        
+        Args:
+            modified_sections: List of section names that were modified in this step
+        """
+        self.current_step += 1
+        for section in modified_sections:
+            self.modification_history.append((self.current_step, section))
+        
+        # Keep only last 5 steps in history to avoid memory bloat
+        cutoff_step = self.current_step - 5
+        self.modification_history = [
+            (step, section) for step, section in self.modification_history
+            if step > cutoff_step
+        ]
+    
+    def get_diversity_hint(self, editable_sections: List[str]) -> str:
+        """
+        Generate a diversity hint based on recent modification history.
+        
+        Identifies sections that were modified recently and suggests avoiding them
+        to encourage exploration of different optimization dimensions.
+        
+        Args:
+            editable_sections: List of currently editable sections
+            
+        Returns:
+            String hint for diversity (empty if no recent history)
+        """
+        if not self.modification_history or len(editable_sections) <= 1:
+            return ""
+        
+        # Count modifications in recent history (last 3 steps)
+        recent_cutoff = self.current_step - 3
+        recent_mods = [
+            section for step, section in self.modification_history
+            if step > recent_cutoff
+        ]
+        
+        if not recent_mods:
+            return ""
+        
+        # Find sections modified multiple times recently
+        from collections import Counter
+        mod_counts = Counter(recent_mods)
+        frequently_modified = [
+            section for section, count in mod_counts.items()
+            if count >= 2 and section in editable_sections
+        ]
+        
+        if frequently_modified:
+            sections_str = '、'.join(frequently_modified)
+            return DIVERSITY_HINT_TEMPLATE.format(sections_str=sections_str)
+        
+        return ""
+    
     def construct_structured_gradient(self, current_prompt: str,
                                       editable_sections: List[str],
                                       meta_sections: List[str],
@@ -227,6 +292,9 @@ class GradientAgent:
             judge_scores, "对齐", self.n_samples_per_category
         )
         
+        # Get diversity hint based on recent modification history
+        diversity_hint = self.get_diversity_hint(editable_sections)
+        
         # Use centralized prompt template (will be updated for simplified output)
         from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE
         gradient_prompt = GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE.format(
@@ -246,6 +314,7 @@ class GradientAgent:
             overestimated_samples=overestimated_samples,
             underestimated_samples=underestimated_samples,
             well_aligned_samples=well_aligned_samples,
+            diversity_hint=diversity_hint,
             current_lr=f"{current_lr:.4f}",
             structural_lr_threshold=f"{STRUCTURAL_EDIT_LR_THRESHOLD:.1f}"
         )
