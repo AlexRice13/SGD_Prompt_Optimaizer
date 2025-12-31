@@ -9,7 +9,11 @@ from typing import List, Dict, Tuple, Callable
 import numpy as np
 import json
 import re
-from prompts import GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE, format_samples_category
+from prompts import (
+    GRADIENT_AGENT_SIMPLE_PROMPT_TEMPLATE,
+    format_samples_category,
+    DIVERSITY_HINT_TEMPLATE
+)
 from constants import STRUCTURAL_EDIT_LR_THRESHOLD, can_perform_structural_edit
 
 
@@ -239,11 +243,7 @@ class GradientAgent:
         
         if frequently_modified:
             sections_str = '、'.join(frequently_modified)
-            return (
-                f"\n**多样性提示（Diversity Hint）**：\n"
-                f"以下sections在最近几步中已被频繁修改：{sections_str}\n"
-                f"建议考虑优化其他sections以实现多维度改进，避免局部最优。"
-            )
+            return DIVERSITY_HINT_TEMPLATE.format(sections_str=sections_str)
         
         return ""
     

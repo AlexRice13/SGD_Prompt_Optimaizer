@@ -338,6 +338,38 @@ RATIONALE: [简要说明如何响应压力信号]
 
 
 # ============================================================================
+# 简化提示模板（Simplification Hints）
+# ============================================================================
+
+# Simplification hint when section count exceeds threshold
+SIMPLIFICATION_HINT_MANY_SECTIONS = """**注意：当前有{total_sections}个sections（已超过建议的5个）**
+根据奥卡姆剃刀原则（Occam's Razor）：
+- 优先考虑**合并相似或重复的内容**到现有sections中，而不是添加新内容
+- 简洁明了的prompt通常比冗长复杂的prompt更有效
+- 避免不必要的复杂性和冗余"""
+
+# Simplification hint when adding new section
+SIMPLIFICATION_HINT_ADD_SECTION = """在添加新section时，请确保：
+- 新内容无法合并到现有sections中
+- 新section提供独特且必要的价值
+- 遵循简洁性原则"""
+
+# Default simplification hint
+SIMPLIFICATION_HINT_DEFAULT = "保持prompt简洁明了，遵循奥卡姆剃刀原则。"
+
+
+# ============================================================================
+# 多样性提示模板（Diversity Hints）
+# ============================================================================
+
+# Diversity hint template for frequently modified sections
+DIVERSITY_HINT_TEMPLATE = """
+**多样性提示（Diversity Hint）**：
+以下sections在最近几步中已被频繁修改：{sections_str}
+建议考虑优化其他sections以实现多维度改进，避免局部最优。"""
+
+
+# ============================================================================
 # 辅助函数：格式化样本
 # ============================================================================
 
